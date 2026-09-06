@@ -1,3 +1,488 @@
+function normalizeTenBill(value) {
+    return String(value || "").trim().toUpperCase();
+}
+
+function isBillKYC(value) {
+    return normalizeTenBill(value).includes("KYC");
+}
+
+function isBillBSP(value) {
+    return normalizeTenBill(value) === "BSP";
+}
+
+function isBillHoaChat(value) {
+    var tenBill = normalizeTenBill(value);
+
+    if (!tenBill) {
+        return false;
+    }
+
+    // Không tính các bill dịch vụ này là bill hóa chất
+    var exclude = [
+        "C",
+        "CẮT",
+        "CAT",
+        "G",
+        "GỘI",
+        "GOI",
+        "DVL",
+        "BSP"
+    ];
+
+    return !exclude.includes(tenBill);
+}
+
+function breakAllMergedRanges(range) {
+    var mergedRanges = range.getMergedRanges();
+
+    for (var i = 0; i < mergedRanges.length; i++) {
+        mergedRanges[i].breakApart();
+    }
+}
+
+function clearThongKeNhanVienCu(sheet) {
+
+    // Bảng thống kê mới cố định trong J13:M
+    var startRow = 13;
+    var startCol = 10; // J
+    var numCols = 4;
+
+    // Clear khoảng đủ lớn để chứa thống kê
+    // Ví dụ J13:M60
+    var numRows = 48;
+
+    var range = sheet.getRange(
+        startRow,
+        startCol,
+        numRows,
+        numCols
+    );
+
+    // Phải break merge trước
+    range.breakApart();
+
+    range
+        .clearContent()
+        .clearFormat()
+        .setBackground("#ffffff")
+        .setBorder(
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        )
+        .setFontFamily("Arial")
+        .setFontSize(13);
+}
+
+function xuatThongKeNhanVien(sheet, startRow, listThoChinh, listThoPhu) {
+
+    // =====================================================
+    // BẢNG THỐNG KÊ CỐ ĐỊNH TRONG PHẠM VI J:M
+    // =====================================================
+    var startCol = 10; // J
+    var totalCols = 4;
+
+    // Font toàn bảng
+    var fontSize = 13;
+
+    // Điều chỉnh độ rộng cột
+    sheet.setColumnWidth(10, 115); // J - Nhân viên
+    sheet.setColumnWidth(11, 125); // K
+    sheet.setColumnWidth(12, 135); // L
+    sheet.setColumnWidth(13, 115); // M
+
+    // =====================================================
+    // TITLE CHÍNH
+    // =====================================================
+    sheet.getRange(startRow, startCol, 1, totalCols)
+        .merge()
+        .setValue("THỐNG KÊ KPI NHÂN VIÊN")
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setBackground("#d9ead3")
+        .setBorder(true, true, true, true, true, true);
+
+    // =====================================================
+    // 1. TỔNG QUAN
+    // =====================================================
+    var rowTongQuanTitle = startRow + 1;
+    var rowTongQuanHeader = startRow + 2;
+    var rowTongQuanData = startRow + 3;
+
+    // Tiêu đề section
+    sheet.getRange(rowTongQuanTitle, startCol, 1, totalCols)
+        .merge()
+        .setValue("TỔNG QUAN")
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle")
+        .setBackground("#eeeeee")
+        .setBorder(true, true, true, true, true, true);
+
+    // Header
+    var headerTongQuan = [[
+        "Nhân viên",
+        "Tổng lương",
+        "DT riêng",
+        "Lương / DT"
+    ]];
+
+    sheet.getRange(
+        rowTongQuanHeader,
+        startCol,
+        1,
+        totalCols
+    )
+        .setValues(headerTongQuan)
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setBackground("#d3d3d3")
+        .setBorder(true, true, true, true, true, true);
+
+    var tongQuanRows = [];
+
+    // Thợ chính
+    listThoChinh.forEach(function (tho) {
+
+        var tyLeLuong = 0;
+
+        if (tho.tongDoanhThuCaNhan > 0) {
+            tyLeLuong =
+                tho.tongLuong /
+                tho.tongDoanhThuCaNhan;
+        }
+
+        tongQuanRows.push([
+            tho.name,
+            tho.tongLuong,
+            tho.tongDoanhThuCaNhan,
+            tyLeLuong
+        ]);
+    });
+
+    // Thợ phụ
+    listThoPhu.forEach(function (tho) {
+
+        var tyLeLuong = 0;
+
+        if (tho.tongDoanhThuCaNhan > 0) {
+            tyLeLuong =
+                tho.tongLuong /
+                tho.tongDoanhThuCaNhan;
+        }
+
+        tongQuanRows.push([
+            tho.name,
+            tho.tongLuong,
+            tho.tongDoanhThuCaNhan,
+            tyLeLuong
+        ]);
+    });
+
+    if (tongQuanRows.length > 0) {
+
+        var rangeTongQuan = sheet.getRange(
+            rowTongQuanData,
+            startCol,
+            tongQuanRows.length,
+            totalCols
+        );
+
+        rangeTongQuan
+            .setValues(tongQuanRows)
+            .setFontSize(fontSize)
+            .setFontWeight("normal")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle")
+            .setBorder(true, true, true, true, true, true);
+
+        // Tổng lương + DT riêng
+        sheet.getRange(
+            rowTongQuanData,
+            startCol + 1,
+            tongQuanRows.length,
+            2
+        ).setNumberFormat("#,##0");
+
+        // Lương / DT
+        sheet.getRange(
+            rowTongQuanData,
+            startCol + 3,
+            tongQuanRows.length,
+            1
+        ).setNumberFormat("0.00%");
+    }
+
+    // =====================================================
+    // TÔ MÀU + IN ĐẬM TÊN NHÂN VIÊN Ở TỔNG QUAN
+    // =====================================================
+
+    for (var i = 0; i < listThoChinh.length; i++) {
+
+        sheet.getRange(
+            rowTongQuanData + i,
+            startCol
+        )
+            .setBackground(listThoChinh[i].color)
+            .setFontWeight("bold")
+            .setFontSize(fontSize)
+            .setHorizontalAlignment("left");
+    }
+
+    for (var i = 0; i < listThoPhu.length; i++) {
+
+        sheet.getRange(
+            rowTongQuanData + listThoChinh.length + i,
+            startCol
+        )
+            .setBackground(listThoPhu[i].color)
+            .setFontWeight("bold")
+            .setFontSize(fontSize)
+            .setHorizontalAlignment("left");
+    }
+
+    // =====================================================
+    // 2. DOANH THU ĐẶC BIỆT - THỢ CHÍNH
+    // =====================================================
+
+    var rowDoanhThuTitle =
+        rowTongQuanData +
+        tongQuanRows.length +
+        1;
+
+    var rowDoanhThuHeader =
+        rowDoanhThuTitle + 1;
+
+    var rowDoanhThuData =
+        rowDoanhThuHeader + 1;
+
+    sheet.getRange(
+        rowDoanhThuTitle,
+        startCol,
+        1,
+        totalCols
+    )
+        .merge()
+        .setValue("DOANH THU ĐẶC BIỆT - THỢ CHÍNH")
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle")
+        .setBackground("#eeeeee")
+        .setBorder(true, true, true, true, true, true);
+
+    var headerDoanhThu = [[
+        "Nhân viên",
+        "DT KYC",
+        "DT BSP",
+        "Lương / DT"
+    ]];
+
+    sheet.getRange(
+        rowDoanhThuHeader,
+        startCol,
+        1,
+        totalCols
+    )
+        .setValues(headerDoanhThu)
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setBackground("#d3d3d3")
+        .setBorder(true, true, true, true, true, true);
+
+    var doanhThuRows = [];
+
+    listThoChinh.forEach(function (tho) {
+
+        var tyLeLuong = 0;
+
+        if (tho.tongDoanhThuCaNhan > 0) {
+            tyLeLuong =
+                tho.tongLuong /
+                tho.tongDoanhThuCaNhan;
+        }
+
+        doanhThuRows.push([
+            tho.name,
+            tho.tongDoanhThuKYC,
+            tho.tongDoanhThuBSP,
+            tyLeLuong
+        ]);
+    });
+
+    if (doanhThuRows.length > 0) {
+
+        sheet.getRange(
+            rowDoanhThuData,
+            startCol,
+            doanhThuRows.length,
+            totalCols
+        )
+            .setValues(doanhThuRows)
+            .setFontSize(fontSize)
+            .setFontWeight("normal")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle")
+            .setBorder(true, true, true, true, true, true);
+
+        // KYC + BSP
+        sheet.getRange(
+            rowDoanhThuData,
+            startCol + 1,
+            doanhThuRows.length,
+            2
+        ).setNumberFormat("#,##0");
+
+        // %
+        sheet.getRange(
+            rowDoanhThuData,
+            startCol + 3,
+            doanhThuRows.length,
+            1
+        ).setNumberFormat("0.00%");
+    }
+
+    // Màu tên thợ chính
+    for (var i = 0; i < listThoChinh.length; i++) {
+
+        sheet.getRange(
+            rowDoanhThuData + i,
+            startCol
+        )
+            .setBackground(listThoChinh[i].color)
+            .setFontWeight("bold")
+            .setFontSize(fontSize)
+            .setHorizontalAlignment("left");
+    }
+
+    // =====================================================
+    // 3. HÓA CHẤT - THỢ CHÍNH
+    // =====================================================
+
+    var rowHoaChatTitle =
+        rowDoanhThuData +
+        doanhThuRows.length +
+        1;
+
+    var rowHoaChatHeader =
+        rowHoaChatTitle + 1;
+
+    var rowHoaChatData =
+        rowHoaChatHeader + 1;
+
+    sheet.getRange(
+        rowHoaChatTitle,
+        startCol,
+        1,
+        totalCols
+    )
+        .merge()
+        .setValue("HÓA CHẤT - THỢ CHÍNH")
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle")
+        .setBackground("#eeeeee")
+        .setBorder(true, true, true, true, true, true);
+
+    var headerHoaChat = [[
+        "Nhân viên",
+        "SL bill HC",
+        "DT hóa chất",
+        "Bill TB"
+    ]];
+
+    sheet.getRange(
+        rowHoaChatHeader,
+        startCol,
+        1,
+        totalCols
+    )
+        .setValues(headerHoaChat)
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setBackground("#d3d3d3")
+        .setBorder(true, true, true, true, true, true);
+
+    var hoaChatRows = [];
+
+    listThoChinh.forEach(function (tho) {
+
+        var billTrungBinh = 0;
+
+        if (tho.soBillHoaChat > 0) {
+
+            billTrungBinh =
+                tho.tongDoanhThuHoaChat /
+                tho.soBillHoaChat;
+        }
+
+        hoaChatRows.push([
+            tho.name,
+            tho.soBillHoaChat,
+            tho.tongDoanhThuHoaChat,
+            billTrungBinh
+        ]);
+    });
+
+    if (hoaChatRows.length > 0) {
+
+        sheet.getRange(
+            rowHoaChatData,
+            startCol,
+            hoaChatRows.length,
+            totalCols
+        )
+            .setValues(hoaChatRows)
+            .setFontSize(fontSize)
+            .setFontWeight("normal")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle")
+            .setBorder(true, true, true, true, true, true);
+
+        // Số lượng bill
+        sheet.getRange(
+            rowHoaChatData,
+            startCol + 1,
+            hoaChatRows.length,
+            1
+        ).setNumberFormat("0");
+
+        // DT hóa chất + Bill TB
+        sheet.getRange(
+            rowHoaChatData,
+            startCol + 2,
+            hoaChatRows.length,
+            2
+        ).setNumberFormat("#,##0");
+    }
+
+    // Màu tên thợ chính
+    for (var i = 0; i < listThoChinh.length; i++) {
+
+        sheet.getRange(
+            rowHoaChatData + i,
+            startCol
+        )
+            .setBackground(listThoChinh[i].color)
+            .setFontWeight("bold")
+            .setFontSize(fontSize)
+            .setHorizontalAlignment("left");
+    }
+}
+
 function createOrUpdateSheetLuong() {
     var ui = SpreadsheetApp.getUi(); // Lấy đối tượng UI
 
@@ -28,24 +513,26 @@ function createOrUpdateSheetLuong() {
             .setColumnWidth(24, 150)
             .setColumnWidth(25, 150)
             .setColumnWidth(26, 150);
-        const cellTitle = sheet.getRange("o1");
+
+        const cellTitle = sheet.getRange("O1");
         let title = "Lương " + sheet.getRange("A1").getValue();
         cellTitle.setValue(title);
         cellTitle.setFontWeight("bold");
         cellTitle.setFontSize(17).setHorizontalAlignment("left");
+
         var values = [["Ngày", "Tên khách", "Tiền bill", "Tổng bill ngày"]];
 
         const headerCommons = sheet.getRange(3, 15, 2, 4);
         for (var col = 15; col <= 18; col++) {
-            // Gộp ô tại hàng 3 và hàng 4 cho mỗi cột
-            sheet.getRange(3, col, 2, 1).merge(); // (3, col): bắt đầu từ hàng 3, cột col, chiều cao là 2 hàng và 1 cột
+            sheet.getRange(3, col, 2, 1).merge();
             sheet.getRange(3, col).setValue(values[0][col - 15]);
             sheet.getRange(3, col).setVerticalAlignment("middle").setHorizontalAlignment("center");
         }
+
         headerCommons.setFontWeight("bold");
         headerCommons.setFontSize(12);
         headerCommons.setBackground("#d3d3d3");
-        headerCommons.setBorder(true, true, true, true, true, true); // Đặt đường viền cho các cạnh trên, dưới, trái, phải
+        headerCommons.setBorder(true, true, true, true, true, true);
 
         let lastRowThoChinh = sheet.getRange(sheet.getMaxRows(), 10).getNextDataCell(SpreadsheetApp.Direction.UP).getRow();
         let lastRowThoPhu = sheet.getRange(sheet.getMaxRows(), 12).getNextDataCell(SpreadsheetApp.Direction.UP).getRow();
@@ -56,7 +543,7 @@ function createOrUpdateSheetLuong() {
         let colThoPhu = sheet.getRange("L4:L" + lastRowThoPhu);
         let thoPhu = colThoPhu.getValues();
 
-        var startCellTho = sheet.getRange("S4"); // Lấy ô E4
+        var startCellTho = sheet.getRange("S4");
         let coutTho = 0;
 
         for (let i = 0; i < thoChinh.length; i++) {
@@ -65,16 +552,17 @@ function createOrUpdateSheetLuong() {
                 .setFontSize(12)
                 .setBackground(colThoChinh.getCell(i + 1, 1).getBackground())
                 .setBorder(true, true, true, true, true, true)
-                .setHorizontalAlignment("center"); // Căn giữa theo chiều ngang
+                .setHorizontalAlignment("center");
             coutTho += 1;
         }
-        sheet.getRange(3, 19, 1, thoChinh.length).merge(); // (3, col): bắt đầu từ hàng 3, cột col, chiều cao là 2 hàng và 1 cột
+
+        sheet.getRange(3, 19, 1, thoChinh.length).merge();
         sheet.getRange(3, 19).setValue("Thợ chính")
             .setFontWeight("bold")
             .setFontSize(12)
             .setBackground("#d3d3d3")
             .setBorder(true, true, true, true, true, true)
-            .setHorizontalAlignment("center"); // Căn giữa theo chiều ngang
+            .setHorizontalAlignment("center");
 
         for (let i = 0; i < thoPhu.length; i++) {
             startCellTho.offset(0, coutTho).setValue(thoPhu[i])
@@ -82,16 +570,18 @@ function createOrUpdateSheetLuong() {
                 .setFontSize(12)
                 .setBackground(colThoPhu.getCell(i + 1, 1).getBackground())
                 .setBorder(true, true, true, true, true, true)
-                .setHorizontalAlignment("center"); // Căn giữa theo chiều ngang
+                .setHorizontalAlignment("center");
             coutTho += 1;
         }
-        sheet.getRange(3, 19 + thoChinh.length, 1, thoPhu.length).merge(); // (3, col): bắt đầu từ hàng 3, cột col, chiều cao là 2 hàng và 1 cột
+
+        sheet.getRange(3, 19 + thoChinh.length, 1, thoPhu.length).merge();
         sheet.getRange(3, 19 + thoChinh.length).setValue("Thợ phụ")
             .setFontWeight("bold")
             .setFontSize(12)
             .setBackground("#d3d3d3")
             .setBorder(true, true, true, true, true, true)
-            .setHorizontalAlignment("center"); // Căn giữa theo chiều ngang
+            .setHorizontalAlignment("center");
+
         sheet.getRange(3, 19 + thoChinh.length + thoPhu.length, 2, 1).merge()
             .setValue("Ngày sửa")
             .setFontWeight("bold")
@@ -100,372 +590,1348 @@ function createOrUpdateSheetLuong() {
             .setBorder(true, true, true, true, true, true)
             .setHorizontalAlignment("center")
             .setVerticalAlignment("middle");
-        // ui.alert("Tạo bảng lương thành công.");
-    } else {
     }
-
 }
 
 function tinhLuong() {
-    var ui = SpreadsheetApp.getUi(); // Lấy đối tượng UI
 
-    let dongBatDauLuong = 5;
+    var ui = SpreadsheetApp.getUi();
+
+    // =====================================================
+    // CẤU HÌNH VỊ TRÍ
+    // =====================================================
+
+    // Tổng lương nằm tại dòng 5-6
+    let dongTongLuong = 5;
+
+    // Danh sách bill bắt đầu từ dòng 7
+    let dongBatDauLuong = 7;
+
+    // Dữ liệu nguồn vẫn bắt đầu từ dòng 5
     let dongBatDauDT = 5;
+
+    // Cột thợ bắt đầu từ S = 19
     let startColTho = 19;
-    let tongDoanhThu = 0;
+
+    // Bảng lương bắt đầu từ O = 15
     let cotBatDauLuong = 15;
 
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    var lastRowSheet = sheet.getLastRow(); // Lấy dòng cuối cùng có dữ liệu của toàn bộ sheet
+    let tongDoanhThu = 0;
 
-    // Hiển thị hộp thoại xác nhận
-    var response = ui.alert("Xác nhận", "Bạn có muốn tính lương cho tháng " + sheet.getRange("A1").getValue() + "?", ui.ButtonSet.YES_NO);
+    var sheet = SpreadsheetApp
+        .getActiveSpreadsheet()
+        .getActiveSheet();
 
-    if (response == ui.Button.YES) {
+    // =====================================================
+    // HÀM NỘI BỘ NHẬN DIỆN BILL
+    // =====================================================
 
-        // clear data + format
-        var dataGetLastRowLuong = sheet.getRange("Q5:Q" + lastRowSheet).getValues(); // Lấy dữ liệu cột Q
-        var lastRowLuong = 4;
-
-        for (var i = 0; i < dataGetLastRowLuong.length; i++) {
-            if (dataGetLastRowLuong[i] && dataGetLastRowLuong[i][0] !== "") {
-                lastRowLuong = lastRowLuong + 1; // Đếm số dòng có dữ liệu
-            }
-        }
-
-        var dataGetLastRow = sheet.getRange("A4:A" + lastRowSheet).getValues(); // Lấy dữ liệu cột A
-        var lastRow = dongBatDauDT - 1;
-        for (var i = 0; i < dataGetLastRow.length; i++) {
-            if (dataGetLastRow[i] && dataGetLastRow[i][0] !== "") {
-                lastRow = lastRow + 1; // Đếm số dòng có dữ liệu
-            }
-        }
-
-        Logger.log('Dong cuoi cung ' + lastRow)
-
-        if (lastRowLuong > 8) { // nếu đã fill dữ liệu lương
-            // clear dòng tổng kết
-            sheet.getRange(lastRowLuong, 15, 2, 20).clearContent().clearFormat().setBackground("#ffffff").setBorder(false, false, false, false, false, false).setFontFamily("Arial").setFontSize(12).setHorizontalAlignment("center");
-            // clear merge của cột ngày
-            sheet.getRange(dongBatDauLuong, 15, lastRowLuong, 1).breakApart();
-            sheet.getRange(dongBatDauLuong, 18, lastRowLuong, 1).breakApart();
-        }
-
-        // Doanh thu - Ngày
-        const columnDateDT = sheet.getRange("A" + dongBatDauDT + ":A" + lastRow);
-        const dateDT = columnDateDT.getValues();
-        // Doanh thu - tên khách
-        const columnCustomerDT = sheet.getRange("B" + dongBatDauDT + ":B" + lastRow);
-        const customerDT = columnCustomerDT.getValues();
-        // Doanh thu - tiền bill
-        const columnBillDT = sheet.getRange("C" + dongBatDauDT + ":C" + lastRow);
-        const billDT = columnBillDT.getValues();
-        // Doanh thu - thợ chính
-        const columnThoChinhDT = sheet.getRange("E" + dongBatDauDT + ":E" + lastRow);
-        const thoChinhDT = columnThoChinhDT.getValues();
-        // Doanh thu - thợ phụ
-        const columnThoPhuDT = sheet.getRange("F" + dongBatDauDT + ":F" + lastRow);
-        const thoPhuDT = columnThoPhuDT.getValues();
-
-        // Doanh thu - trạng thái tính lương
-        const columnStatusDT = sheet.getRange("H" + dongBatDauDT + ":H" + lastRow);
-        const statusDT = columnStatusDT.getValues();
-
-        // Lương - ngày
-        const columnDateL = sheet.getRange("O" + dongBatDauLuong + ":O" + lastRow + 1);
-        const dateL = columnDateL.getValues();
-        // Lương - tên khách
-        const columnCustomerL = sheet.getRange("P" + dongBatDauLuong + ":P" + lastRow + 1);
-        const customerL = columnCustomerL.getValues();
-        // Lương - tiền bill
-        const columnBillL = sheet.getRange("Q" + dongBatDauLuong + ":Q" + lastRow + 1);
-        columnBillL.setNumberFormat("#,##0");
-        const billL = columnBillL.getValues();
-
-        // Danh sách thợ
-        let listThoChinh = new Array();
-        let listThoPhu = new Array();
-
-        let lastRowThoChinh = sheet.getRange(sheet.getMaxRows(), 10).getNextDataCell(SpreadsheetApp.Direction.UP).getRow();
-        let lastRowThoPhu = sheet.getRange(sheet.getMaxRows(), 12).getNextDataCell(SpreadsheetApp.Direction.UP).getRow();
-
-        let colThoChinh = sheet.getRange("J4:J" + lastRowThoChinh);
-        let thoChinh = colThoChinh.getValues();
-        let colLuongThoChinh = sheet.getRange("K4:K" + lastRowThoChinh);
-        let luongThoChinh = colLuongThoChinh.getValues();
-
-        let colThoPhu = sheet.getRange("L4:L" + lastRowThoPhu);
-        let thoPhu = colThoPhu.getValues();
-        let colLuongThoPhu = sheet.getRange("M4:M" + lastRowThoPhu);
-        let luongThoPhu = colLuongThoPhu.getValues();
-
-        var headerThoChinh = sheet.getRange(4, 19, 1, thoChinh.length).getValues()[0];
-        var headerThoPhu = sheet.getRange(4, 19 + thoChinh.length, 1, thoPhu.length).getValues()[0];
-
-        // start lấy thông tin thợ chính
-        for (let i = 0; i < thoChinh.length; i++) {
-            listThoChinh.push({
-                name: thoChinh[i][0],
-                luong: luongThoChinh[i][0],
-                index: headerThoChinh.indexOf(thoChinh[i][0]) + startColTho,
-                color: colThoChinh.getCell(i + 1, 1).getBackground(),
-                tongLuong: 0
-            })
-        }
-        // end lấy thông tin thợ chính
-        // start lấy thông tin thợ phụ
-        for (let i = 0; i < thoPhu.length; i++) {
-            listThoPhu.push({
-                name: thoPhu[i][0],
-                luong: luongThoPhu[i][0],
-                index: headerThoPhu.indexOf(thoPhu[i][0]) + startColTho + thoChinh.length,
-                color: colThoPhu.getCell(i + 1, 1).getBackground(),
-                tongLuong: 0
-            })
-        }
-        // end lấy thông tin thợ phụ
-        //start fill data
-        for (let i = 0; i < dateDT.length; i++) {
-            if (dateDT[i] != undefined && dateDT[i] != "" && statusDT[i][0] >= 0) {
-                if (customerDT[i][0] == "C" ) {
-                  customerDT[i][0] = "Cắt"
-                } else if (customerDT[i][0] == "G") {
-                  customerDT[i][0] = "Gội"
-                } else if (customerDT[i][0] == "CC") {
-                  customerDT[i][0] = "Chấm chân"
-                } else if (customerDT[i][0] == "D") {
-                  customerDT[i][0] = "Duỗi"
-                } else if (customerDT[i][0] == "U") {
-                  customerDT[i][0] = "Uốn"
-                } else if (customerDT[i][0] == "PC") {
-                  customerDT[i][0] = "Phồng chân"
-                } else if (customerDT[i][0] == "N") {
-                  customerDT[i][0] = "Nhuộm"
-                }
-
-                // reset value dòng
-                sheet.getRange(dongBatDauLuong + i, 15, 1, 20).clearContent().clearFormat().setBackground("#ffffff").setBorder(false, false, false, false, false, false).setFontFamily("Arial").setFontSize(12);
-
-                dateL[i] = dateDT[i];
-                columnDateL.getCell(i + 1, 1).setFontWeight("bold");
-                customerL[i] = customerDT[i];
-                billDT[i][0] = billDT[i][0] * 1000;
-                billL[i] = billDT[i];
-
-                const curentThoChinh = listThoChinh.find(item => item.name == thoChinhDT[i]);
-                if (curentThoChinh) {
-                  if (customerDT[i][0].toLowerCase().includes("kyc") || customerDT[i][0].toLowerCase() === "kyc") {
-                    sheet.getRange(dongBatDauLuong + i, curentThoChinh.index)
-                        .setValue(billDT[i] / 100 * (curentThoChinh.luong + 10))
-                        .setFontSize("12")
-                        .setBackground(curentThoChinh.color)
-                        .setNumberFormat("#,##0");
-                  } else if (statusDT[i][0] == 1) {
-                    sheet.getRange(dongBatDauLuong + i, curentThoChinh.index)
-                        .setValue(billDT[i] / 100 * (curentThoChinh.luong + listThoPhu[0].luong))
-                        .setFontSize("12")
-                        .setBackground(curentThoChinh.color)
-                        .setNumberFormat("#,##0");
-                  } else {
-                    sheet.getRange(dongBatDauLuong + i, curentThoChinh.index)
-                        .setValue(billDT[i] / 100 * curentThoChinh.luong)
-                        .setFontSize("12")
-                        .setBackground(curentThoChinh.color)
-                        .setNumberFormat("#,##0");
-                  }
-                }
-
-                const curentThoPhu = listThoPhu.find(item => item.name == thoPhuDT[i]);
-                if (curentThoPhu) {
-                    if (customerDT[i][0].toLowerCase() == "bsp" || customerDT[i][0].toLowerCase() == "gội" || customerDT[i][0].toLowerCase() == "cắt") {
-                        sheet.getRange(dongBatDauLuong + i, curentThoPhu.index)
-                            .setValue(billDT[i] / 100 * listThoChinh[0].luong)
-                            .setFontSize("12")
-                            .setBackground(curentThoPhu.color)
-                            .setNumberFormat("#,##0");
-                    } else {
-                        sheet.getRange(dongBatDauLuong + i, curentThoPhu.index)
-                            .setValue(billDT[i] / 100 * curentThoPhu.luong)
-                            .setFontSize("12")
-                            .setBackground(curentThoPhu.color)
-                            .setNumberFormat("#,##0");
-                    }
-                }
-                var currentDate = new Date(); // Lấy ngày hiện tại
-                sheet.getRange(dongBatDauLuong + i, startColTho + listThoPhu.length + listThoChinh.length).setValue(Utilities.formatDate(currentDate, Session.getScriptTimeZone(), "HH:MM dd/MM/yyyy")).setFontSize("12");
-            }
-        }
-
-        // end fill data
-        // set data
-        columnDateL.setValues(dateL).setFontSize("12");
-        columnCustomerL.setValues(customerL).setFontSize("12");
-        columnBillL.setValues(billL).setFontSize("12");
-        columnStatusDT.setValues(statusDT);
-        // end set data
-
-        // start tinh tong luong
-        for (let i = 0; i < listThoChinh.length; i++) {
-            listThoChinh[i].tongLuong = 0;
-            var listLuong = sheet.getRange(5, listThoChinh[i].index, lastRow, 1).getValues();
-            if (listLuong) {
-                for (let l = 0; l < listLuong.length; l++) {
-                    if (listLuong[l]) {
-                        listThoChinh[i].tongLuong += Number(listLuong[l]);
-                    }
-                }
-            }
-        }
-        for (let i = 0; i < listThoPhu.length; i++) {
-            listThoPhu[i].tongLuong = 0;
-            var listLuong = sheet.getRange(5, listThoPhu[i].index, lastRow, 1).getValues();
-            if (listLuong) {
-                for (let l = 0; l < listLuong.length; l++) {
-                    if (listLuong[l]) {
-                        listThoPhu[i].tongLuong += Number(listLuong[l]);
-                    }
-                }
-            }
-        }
-        var listDoanhThu = sheet.getRange(5, 17, lastRow, 1).getValues();
-        if (listDoanhThu) {
-            for (let l = 0; l < listDoanhThu.length; l++) {
-                if (listDoanhThu[l]) {
-                    tongDoanhThu += Number(listDoanhThu[l]);
-                }
-            }
-        }
-        // end tinh tong luong
-        // ô Tổng
-        sheet.getRange(lastRow + 1, 15, 2, 2).merge()
-            .setValue("Tổng").setFontSize("14")
-            .setFontWeight("bold");
-
-        // ô Tổng lương số
-        sheet.getRange(lastRow + 1, 17, 2, 1).merge()
-            .setValue(tongDoanhThu).setFontSize("14")
-            .setFontWeight("bold")
-            .setNumberFormat("#,##0");
-        // ô lương chữ
-        sheet.getRange(lastRow + 1, 18, 2, 1).merge()
-            .setValue("Lương").setFontSize("14")
-            .setFontWeight("bold");
-
-        // in tổng lương thợ chính
-        for (let i = 0; i < listThoChinh.length; i++) {
-            sheet.getRange(lastRow + 1, listThoChinh[i].index, 2, 1).merge()
-                .setValue(listThoChinh[i].tongLuong).setFontSize("14")
-                .setFontWeight("bold")
-                .setBackground(listThoChinh[i].color)
-                .setNumberFormat("#,##0");
-        }
-        // in tổng lương thợ phụ
-        for (let i = 0; i < listThoPhu.length; i++) {
-            sheet.getRange(lastRow + 1, listThoPhu[i].index, 2, 1).merge()
-                .setValue(listThoPhu[i].tongLuong).setFontSize("14")
-                .setFontWeight("bold")
-                .setBackground(listThoPhu[i].color)
-                .setNumberFormat("#,##0");
-        }
-
-        // ô trống cuối
-        sheet.getRange(lastRow + 1, +startColTho + listThoPhu.length + listThoChinh.length, 2, 1).merge()
-            .setFontWeight("bold");
-
-        // start merge cột ngày giống nhau
-        var startRow = 5; // Dòng bắt đầu từ A5
-
-        // Lấy tất cả giá trị trong cột O từ dòng 5 trở đi
-        var data = sheet.getRange("O" + dongBatDauLuong + ":O" + (lastRow)).getValues();
-
-        var startMergeRow = startRow;  // Dòng bắt đầu merge
-        let curentDateCheck = data[0][0]
-        let coutSame = 1;
-        let currentColor = 1;
-        let hangColor = "";
-        Logger.log('So data quét' + data.length)
-        for (var i = 1; i <= data.length; i++) {
-            let curentDateCheckStr = curentDateCheck ? Utilities.formatDate(curentDateCheck, Session.getScriptTimeZone(), "dd/MM/yyyy") : "DONE";
-            let dataStr = data[i] && data[i][0] ? Utilities.formatDate(data[i][0], Session.getScriptTimeZone(), "dd/MM/yyyy") : "DONE";
-
-            if (curentDateCheckStr == dataStr || dataStr == 'DONE') {
-                coutSame += 1;
-                if (i == data.length - 1 && coutSame != 1) {
-                    let valueOld = sheet.getRange(startMergeRow, 15, coutSame, 1).getValue();
-                    sheet.getRange(startMergeRow, 15, coutSame, 1).clearContent().merge().setValue(valueOld).setFontWeight("bold");
-                    var data2 = sheet.getRange(startMergeRow, 17, coutSame, 1).getValues();
-                    var sum2 = data2.reduce((acc, val) => acc + (val[0] || 0), 0);
-                    sheet.getRange(startMergeRow, 18, coutSame, 1).clearContent().merge().setValue(sum2).setNumberFormat("#,##0");
-                    if (currentColor == 1) {
-                        hangColor = "#d9d2e9";
-                        currentColor = 2;
-                    } else {
-                        hangColor = "#ffffff";
-                        currentColor = 1;
-                    }
-                    sheet.getRange(startMergeRow, 15, coutSame, 4).setBackground(hangColor);
-                    startMergeRow += coutSame;
-                }
-            } else {
-                if (coutSame != 1) {
-                    let valueOld = sheet.getRange(startMergeRow, 15, coutSame, 1).getValue();
-                    sheet.getRange(startMergeRow, 15, coutSame, 1).clearContent().merge().setValue(valueOld).setFontWeight("bold");
-                    var data1 = sheet.getRange(startMergeRow, 17, coutSame, 1).getValues();
-                    var sum1 = data1.reduce((acc, val) => acc + (val[0] || 0), 0);
-                    sheet.getRange(startMergeRow, 18, coutSame, 1).clearContent().merge().setValue(sum1).setNumberFormat("#,##0");
-                    if (currentColor == 1) {
-                        hangColor = "#d9d2e9";
-                        currentColor = 2;
-                    } else {
-                        hangColor = "#ffffff";
-                        currentColor = 1;
-                    }
-                    sheet.getRange(startMergeRow, 15, coutSame, 4).setBackground(hangColor);
-                    startMergeRow += coutSame;
-                } else {
-                    if (currentColor == 1) {
-                        hangColor = "#d9d2e9";
-                        currentColor = 2;
-                    } else {
-                        hangColor = "#ffffff";
-                        currentColor = 1;
-                    }
-                    sheet.getRange(startMergeRow, 15, coutSame, 4).setBackground(hangColor);
-                    startMergeRow += 1;
-                }
-                coutSame = 1;
-                curentDateCheck = data[i][0];
-            }
-        }
-        // Gộp tất cả ô lại và set viền cùng lúc
-        sheet.getRange(dongBatDauLuong, cotBatDauLuong, lastRow - dongBatDauLuong + 3, 5 + listThoChinh.length + listThoPhu.length).setBorder(true, true, true, true, true, true).setHorizontalAlignment("center").setVerticalAlignment("middle"); // (3, col): bắt đầu từ hàng 3, cột col, chiều cao là 2 hàng và 1 cột
-        // end merge cột ngày giống nhau
-        //  ui.alert("Tính lương đã xong.");
-
+    function normalizeBill(value) {
+        return String(value || "")
+            .trim()
+            .toUpperCase();
     }
+
+    function billKYC(value) {
+        return normalizeBill(value).includes("KYC");
+    }
+
+    function billBSP(value) {
+        return normalizeBill(value) === "BSP";
+    }
+
+    function billHoaChat(value) {
+
+        var tenBill = normalizeBill(value);
+
+        if (!tenBill) {
+            return false;
+        }
+
+        // Không tính các bill này là hóa chất
+        var exclude = [
+            "C",
+            "CẮT",
+            "CAT",
+
+            "G",
+            "GỘI",
+            "GOI",
+
+            "DVL",
+            "BSP"
+        ];
+
+        return !exclude.includes(tenBill);
+    }
+
+    // =====================================================
+    // CONFIRM
+    // =====================================================
+
+    var response = ui.alert(
+        "Xác nhận",
+        "Bạn có muốn tính lương cho tháng " +
+            sheet.getRange("A1").getValue() +
+            "?",
+        ui.ButtonSet.YES_NO
+    );
+
+    if (response != ui.Button.YES) {
+        return;
+    }
+
+    // =====================================================
+    // 1. CLEAR BẢNG THỐNG KÊ KPI CŨ J13:M
+    // =====================================================
+
+    var rangeThongKeCu = sheet.getRange(
+        13,     // row
+        10,     // J
+        50,     // đủ vùng thống kê
+        4       // J:M
+    );
+
+    // Unmerge toàn bộ merge trong vùng KPI
+    var mergedThongKe =
+        rangeThongKeCu.getMergedRanges();
+
+    for (
+        var mt = 0;
+        mt < mergedThongKe.length;
+        mt++
+    ) {
+        mergedThongKe[mt].breakApart();
+    }
+
+    rangeThongKeCu
+        .clearContent()
+        .clearFormat()
+        .setBackground("#ffffff")
+        .setBorder(
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+        )
+        .setFontFamily("Arial")
+        .setFontSize(13)
+        .setFontWeight("normal");
+
+    // =====================================================
+    // 2. XÁC ĐỊNH DÒNG CUỐI DỮ LIỆU NGUỒN
+    // Dựa theo cột A
+    // =====================================================
+
+    var lastRowSheet = sheet.getLastRow();
+
+    var dataGetLastRow = sheet.getRange(
+        "A4:A" + lastRowSheet
+    ).getValues();
+
+    var lastRow = dongBatDauDT - 1;
+
+    for (
+        var i = 0;
+        i < dataGetLastRow.length;
+        i++
+    ) {
+
+        if (
+            dataGetLastRow[i] &&
+            dataGetLastRow[i][0] !== ""
+        ) {
+            lastRow++;
+        }
+    }
+
+    Logger.log(
+        "Dòng cuối dữ liệu nguồn: " +
+        lastRow
+    );
+
+    if (lastRow < dongBatDauDT) {
+
+        ui.alert(
+            "Không có dữ liệu bill để tính lương."
+        );
+
+        return;
+    }
+
+    // Tổng số bill / dòng dữ liệu
+    var soDongChiTiet =
+        lastRow - dongBatDauDT + 1;
+
+    // Vì output bắt đầu từ dòng 7
+    var dongCuoiChiTiet =
+        dongBatDauLuong +
+        soDongChiTiet -
+        1;
+
+    // =====================================================
+    // 3. CLEAR BẢNG LƯƠNG CŨ
+    // =====================================================
+
+    /*
+       Clear từ O5 trở xuống.
+
+       Quan trọng:
+       phải getMergedRanges()
+       rồi breakApart từng vùng merge đầy đủ.
+
+       Không break riêng cột O hoặc R nữa.
+    */
+
+    var lastOldOutputRow =
+        sheet.getLastRow();
+
+    if (lastOldOutputRow >= dongTongLuong) {
+
+        var oldOutputRange = sheet.getRange(
+            dongTongLuong,
+            15, // O
+            lastOldOutputRow -
+                dongTongLuong +
+                1,
+            20 // O -> AH
+        );
+
+        var mergedRanges =
+            oldOutputRange.getMergedRanges();
+
+        for (
+            var m = 0;
+            m < mergedRanges.length;
+            m++
+        ) {
+            mergedRanges[m].breakApart();
+        }
+
+        oldOutputRange
+            .clearContent()
+            .clearFormat()
+            .setBackground("#ffffff")
+            .setBorder(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            )
+            .setFontFamily("Arial")
+            .setFontSize(12)
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle");
+    }
+
+    // =====================================================
+    // 4. LẤY DỮ LIỆU DOANH THU A:H
+    // =====================================================
+
+    // Ngày
+    const columnDateDT = sheet.getRange(
+        dongBatDauDT,
+        1,
+        soDongChiTiet,
+        1
+    );
+
+    const dateDT =
+        columnDateDT.getValues();
+
+    // Tên khách / loại bill
+    const columnCustomerDT = sheet.getRange(
+        dongBatDauDT,
+        2,
+        soDongChiTiet,
+        1
+    );
+
+    const customerDT =
+        columnCustomerDT.getValues();
+
+    // Tiền bill
+    const columnBillDT = sheet.getRange(
+        dongBatDauDT,
+        3,
+        soDongChiTiet,
+        1
+    );
+
+    const billDT =
+        columnBillDT.getValues();
+
+    // Thợ chính - E
+    const columnThoChinhDT = sheet.getRange(
+        dongBatDauDT,
+        5,
+        soDongChiTiet,
+        1
+    );
+
+    const thoChinhDT =
+        columnThoChinhDT.getValues();
+
+    // Thợ phụ - F
+    const columnThoPhuDT = sheet.getRange(
+        dongBatDauDT,
+        6,
+        soDongChiTiet,
+        1
+    );
+
+    const thoPhuDT =
+        columnThoPhuDT.getValues();
+
+    // Tính lương - H
+    const columnStatusDT = sheet.getRange(
+        dongBatDauDT,
+        8,
+        soDongChiTiet,
+        1
+    );
+
+    const statusDT =
+        columnStatusDT.getValues();
+
+    // =====================================================
+    // 5. VÙNG OUTPUT CHI TIẾT
+    // BẮT ĐẦU TỪ DÒNG 7
+    // =====================================================
+
+    // Ngày - O
+    const columnDateL = sheet.getRange(
+        dongBatDauLuong,
+        15,
+        soDongChiTiet,
+        1
+    );
+
+    const dateL =
+        columnDateL.getValues();
+
+    // Tên khách - P
+    const columnCustomerL = sheet.getRange(
+        dongBatDauLuong,
+        16,
+        soDongChiTiet,
+        1
+    );
+
+    const customerL =
+        columnCustomerL.getValues();
+
+    // Tiền bill - Q
+    const columnBillL = sheet.getRange(
+        dongBatDauLuong,
+        17,
+        soDongChiTiet,
+        1
+    );
+
+    columnBillL.setNumberFormat("#,##0");
+
+    const billL =
+        columnBillL.getValues();
+
+    // =====================================================
+    // 6. DANH SÁCH NHÂN VIÊN
+    // =====================================================
+
+    let listThoChinh = [];
+    let listThoPhu = [];
+
+    // -------------------------
+    // THỢ CHÍNH
+    // -------------------------
+
+    let lastRowThoChinh =
+        sheet.getRange(
+            sheet.getMaxRows(),
+            10
+        )
+        .getNextDataCell(
+            SpreadsheetApp.Direction.UP
+        )
+        .getRow();
+
+    let colThoChinh = sheet.getRange(
+        "J4:J" + lastRowThoChinh
+    );
+
+    let thoChinh =
+        colThoChinh.getValues();
+
+    let colLuongThoChinh =
+        sheet.getRange(
+            "K4:K" + lastRowThoChinh
+        );
+
+    let luongThoChinh =
+        colLuongThoChinh.getValues();
+
+    // -------------------------
+    // THỢ PHỤ
+    // -------------------------
+
+    let lastRowThoPhu =
+        sheet.getRange(
+            sheet.getMaxRows(),
+            12
+        )
+        .getNextDataCell(
+            SpreadsheetApp.Direction.UP
+        )
+        .getRow();
+
+    let colThoPhu = sheet.getRange(
+        "L4:L" + lastRowThoPhu
+    );
+
+    let thoPhu =
+        colThoPhu.getValues();
+
+    let colLuongThoPhu =
+        sheet.getRange(
+            "M4:M" + lastRowThoPhu
+        );
+
+    let luongThoPhu =
+        colLuongThoPhu.getValues();
+
+    // Header bảng lương
+    var headerThoChinh =
+        sheet.getRange(
+            4,
+            19,
+            1,
+            thoChinh.length
+        )
+        .getValues()[0];
+
+    var headerThoPhu =
+        sheet.getRange(
+            4,
+            19 + thoChinh.length,
+            1,
+            thoPhu.length
+        )
+        .getValues()[0];
+
+    // =====================================================
+    // 7. KHỞI TẠO THỢ CHÍNH + KPI
+    // =====================================================
+
+    for (
+        let i = 0;
+        i < thoChinh.length;
+        i++
+    ) {
+
+        listThoChinh.push({
+
+            name:
+                thoChinh[i][0],
+
+            luong:
+                Number(
+                    luongThoChinh[i][0]
+                ) || 0,
+
+            index:
+                headerThoChinh.indexOf(
+                    thoChinh[i][0]
+                ) +
+                startColTho,
+
+            color:
+                colThoChinh
+                    .getCell(
+                        i + 1,
+                        1
+                    )
+                    .getBackground(),
+
+            // Lương
+            tongLuong: 0,
+
+            // KPI
+            tongDoanhThuCaNhan: 0,
+
+            tongDoanhThuKYC: 0,
+
+            tongDoanhThuBSP: 0,
+
+            soBillHoaChat: 0,
+
+            tongDoanhThuHoaChat: 0
+        });
+    }
+
+    // =====================================================
+    // 8. KHỞI TẠO THỢ PHỤ + KPI
+    // =====================================================
+
+    for (
+        let i = 0;
+        i < thoPhu.length;
+        i++
+    ) {
+
+        listThoPhu.push({
+
+            name:
+                thoPhu[i][0],
+
+            luong:
+                Number(
+                    luongThoPhu[i][0]
+                ) || 0,
+
+            index:
+                headerThoPhu.indexOf(
+                    thoPhu[i][0]
+                ) +
+                startColTho +
+                thoChinh.length,
+
+            color:
+                colThoPhu
+                    .getCell(
+                        i + 1,
+                        1
+                    )
+                    .getBackground(),
+
+            tongLuong: 0,
+
+            tongDoanhThuCaNhan: 0,
+
+            tongDoanhThuBSP: 0
+        });
+    }
+
+    // =====================================================
+    // 9. TÍNH TỪNG BILL
+    // =====================================================
+
+    for (
+        let i = 0;
+        i < soDongChiTiet;
+        i++
+    ) {
+
+        var ngay =
+            dateDT[i][0];
+
+        if (
+            ngay === "" ||
+            ngay === null ||
+            ngay === undefined
+        ) {
+            continue;
+        }
+
+        /*
+         * Giữ đúng logic cũ:
+         * blank H cũng được hiểu tương đương 0.
+         */
+        if (
+            Number(
+                statusDT[i][0] || 0
+            ) < 0
+        ) {
+            continue;
+        }
+
+        // =================================================
+        // CHUẨN HÓA TÊN BILL HIỂN THỊ
+        // =================================================
+
+        var tenKhach =
+            customerDT[i][0];
+
+        if (tenKhach == "C") {
+
+            tenKhach = "Cắt";
+
+        } else if (tenKhach == "G") {
+
+            tenKhach = "Gội";
+
+        } else if (tenKhach == "CC") {
+
+            tenKhach = "Chấm chân";
+
+        } else if (tenKhach == "D") {
+
+            tenKhach = "Duỗi";
+
+        } else if (tenKhach == "U") {
+
+            tenKhach = "Uốn";
+
+        } else if (tenKhach == "PC") {
+
+            tenKhach = "Phồng chân";
+
+        } else if (tenKhach == "N") {
+
+            tenKhach = "Nhuộm";
+        }
+
+        // =================================================
+        // OUTPUT THÔNG TIN CƠ BẢN
+        // =================================================
+
+        dateL[i][0] = ngay;
+
+        customerL[i][0] =
+            tenKhach;
+
+        // Tiền bill nguồn đang nhập đơn vị nghìn
+        var tienBill =
+            (
+                Number(
+                    billDT[i][0]
+                ) || 0
+            ) *
+            1000;
+
+        billL[i][0] =
+            tienBill;
+
+        // =================================================
+        // THỢ CHÍNH
+        // =================================================
+
+        const curentThoChinh =
+            listThoChinh.find(
+                item =>
+                    item.name ==
+                    thoChinhDT[i][0]
+            );
+
+        if (curentThoChinh) {
+
+            // -------------------------
+            // KPI doanh thu riêng
+            // -------------------------
+
+            curentThoChinh
+                .tongDoanhThuCaNhan +=
+                tienBill;
+
+            // KYC
+            if (billKYC(tenKhach)) {
+
+                curentThoChinh
+                    .tongDoanhThuKYC +=
+                    tienBill;
+            }
+
+            // BSP
+            if (billBSP(tenKhach)) {
+
+                curentThoChinh
+                    .tongDoanhThuBSP +=
+                    tienBill;
+            }
+
+            // Hóa chất
+            if (billHoaChat(tenKhach)) {
+
+                curentThoChinh
+                    .soBillHoaChat += 1;
+
+                curentThoChinh
+                    .tongDoanhThuHoaChat +=
+                    tienBill;
+            }
+
+            // =================================================
+            // TÍNH LƯƠNG THỢ CHÍNH
+            // =================================================
+
+            var luongThoChinhBill = 0;
+
+            // KYC
+            if (billKYC(tenKhach)) {
+
+                luongThoChinhBill =
+                    tienBill /
+                    100 *
+                    (
+                        curentThoChinh.luong +
+                        10
+                    );
+
+            // H = 1
+            } else if (
+                Number(
+                    statusDT[i][0]
+                ) === 1
+            ) {
+
+                /*
+                 * GIỮ NGUYÊN RULE CŨ:
+                 *
+                 * % thợ chính
+                 * +
+                 * % thợ phụ đầu tiên
+                 */
+                var phanTramThoPhuMacDinh =
+                    listThoPhu.length > 0
+                        ? listThoPhu[0].luong
+                        : 0;
+
+                luongThoChinhBill =
+                    tienBill /
+                    100 *
+                    (
+                        curentThoChinh.luong +
+                        phanTramThoPhuMacDinh
+                    );
+
+            } else {
+
+                luongThoChinhBill =
+                    tienBill /
+                    100 *
+                    curentThoChinh.luong;
+            }
+
+            sheet.getRange(
+                dongBatDauLuong + i,
+                curentThoChinh.index
+            )
+                .setValue(
+                    luongThoChinhBill
+                )
+                .setFontSize(12)
+                .setBackground(
+                    curentThoChinh.color
+                )
+                .setNumberFormat(
+                    "#,##0"
+                );
+        }
+
+        // =================================================
+        // THỢ PHỤ
+        // =================================================
+
+        const curentThoPhu =
+            listThoPhu.find(
+                item =>
+                    item.name ==
+                    thoPhuDT[i][0]
+            );
+
+        if (curentThoPhu) {
+
+            // Doanh thu riêng
+            curentThoPhu
+                .tongDoanhThuCaNhan +=
+                tienBill;
+
+            // BSP
+            if (billBSP(tenKhach)) {
+
+                curentThoPhu
+                    .tongDoanhThuBSP +=
+                    tienBill;
+            }
+
+            // =================================================
+            // TÍNH LƯƠNG THỢ PHỤ
+            // =================================================
+
+            var tenBillLower =
+                String(
+                    tenKhach || ""
+                )
+                .toLowerCase();
+
+            var luongThoPhuBill = 0;
+
+            if (
+                tenBillLower == "bsp" ||
+                tenBillLower == "gội" ||
+                tenBillLower == "cắt"
+            ) {
+
+                /*
+                 * GIỮ NGUYÊN RULE CŨ:
+                 *
+                 * BSP/Gội/Cắt thợ phụ
+                 * lấy % thợ chính đầu tiên.
+                 */
+                var phanTramThoChinhMacDinh =
+                    listThoChinh.length > 0
+                        ? listThoChinh[0].luong
+                        : 0;
+
+                luongThoPhuBill =
+                    tienBill /
+                    100 *
+                    phanTramThoChinhMacDinh;
+
+            } else {
+
+                luongThoPhuBill =
+                    tienBill /
+                    100 *
+                    curentThoPhu.luong;
+            }
+
+            sheet.getRange(
+                dongBatDauLuong + i,
+                curentThoPhu.index
+            )
+                .setValue(
+                    luongThoPhuBill
+                )
+                .setFontSize(12)
+                .setBackground(
+                    curentThoPhu.color
+                )
+                .setNumberFormat(
+                    "#,##0"
+                );
+        }
+
+        // =================================================
+        // NGÀY SỬA
+        // =================================================
+
+        var currentDate =
+            new Date();
+
+        sheet.getRange(
+            dongBatDauLuong + i,
+            startColTho +
+                listThoChinh.length +
+                listThoPhu.length
+        )
+            .setValue(
+                Utilities.formatDate(
+                    currentDate,
+                    Session.getScriptTimeZone(),
+                    "HH:mm dd/MM/yyyy"
+                )
+            )
+            .setFontSize(12);
+    }
+
+    // =====================================================
+    // 10. SET O / P / Q
+    // =====================================================
+
+    columnDateL
+        .setValues(dateL)
+        .setFontSize(12);
+
+    columnCustomerL
+        .setValues(customerL)
+        .setFontSize(12);
+
+    columnBillL
+        .setValues(billL)
+        .setFontSize(12)
+        .setNumberFormat("#,##0");
+
+    // Giữ lại như logic cũ
+    columnStatusDT.setValues(statusDT);
+
+    // =====================================================
+    // 11. TÍNH TỔNG LƯƠNG THỢ CHÍNH
+    // =====================================================
+
+    for (
+        let i = 0;
+        i < listThoChinh.length;
+        i++
+    ) {
+
+        listThoChinh[i].tongLuong = 0;
+
+        var listLuongChinh =
+            sheet.getRange(
+                dongBatDauLuong,
+                listThoChinh[i].index,
+                soDongChiTiet,
+                1
+            )
+            .getValues();
+
+        for (
+            let l = 0;
+            l < listLuongChinh.length;
+            l++
+        ) {
+
+            listThoChinh[i].tongLuong +=
+                Number(
+                    listLuongChinh[l][0]
+                ) || 0;
+        }
+    }
+
+    // =====================================================
+    // 12. TÍNH TỔNG LƯƠNG THỢ PHỤ
+    // =====================================================
+
+    for (
+        let i = 0;
+        i < listThoPhu.length;
+        i++
+    ) {
+
+        listThoPhu[i].tongLuong = 0;
+
+        var listLuongPhu =
+            sheet.getRange(
+                dongBatDauLuong,
+                listThoPhu[i].index,
+                soDongChiTiet,
+                1
+            )
+            .getValues();
+
+        for (
+            let l = 0;
+            l < listLuongPhu.length;
+            l++
+        ) {
+
+            listThoPhu[i].tongLuong +=
+                Number(
+                    listLuongPhu[l][0]
+                ) || 0;
+        }
+    }
+
+    // =====================================================
+    // 13. TỔNG DOANH THU
+    // =====================================================
+
+    var listDoanhThu =
+        sheet.getRange(
+            dongBatDauLuong,
+            17, // Q
+            soDongChiTiet,
+            1
+        )
+        .getValues();
+
+    tongDoanhThu = 0;
+
+    for (
+        let l = 0;
+        l < listDoanhThu.length;
+        l++
+    ) {
+
+        tongDoanhThu +=
+            Number(
+                listDoanhThu[l][0]
+            ) || 0;
+    }
+
+    // =====================================================
+    // 14. TỔNG LƯƠNG ĐƯA LÊN DÒNG 5-6
+    // =====================================================
+
+    // O5:P6
+    sheet.getRange(
+        dongTongLuong,
+        15,
+        2,
+        2
+    )
+        .merge()
+        .setValue("Tổng")
+        .setFontSize(14)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+    // Q5:Q6
+    sheet.getRange(
+        dongTongLuong,
+        17,
+        2,
+        1
+    )
+        .merge()
+        .setValue(tongDoanhThu)
+        .setFontSize(14)
+        .setFontWeight("bold")
+        .setNumberFormat("#,##0")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+    // R5:R6
+    sheet.getRange(
+        dongTongLuong,
+        18,
+        2,
+        1
+    )
+        .merge()
+        .setValue("Lương")
+        .setFontSize(14)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+    // =====================================================
+    // TỔNG LƯƠNG THỢ CHÍNH
+    // =====================================================
+
+    for (
+        let i = 0;
+        i < listThoChinh.length;
+        i++
+    ) {
+
+        sheet.getRange(
+            dongTongLuong,
+            listThoChinh[i].index,
+            2,
+            1
+        )
+            .merge()
+            .setValue(
+                listThoChinh[i].tongLuong
+            )
+            .setFontSize(14)
+            .setFontWeight("bold")
+            .setBackground(
+                listThoChinh[i].color
+            )
+            .setNumberFormat("#,##0")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle");
+    }
+
+    // =====================================================
+    // TỔNG LƯƠNG THỢ PHỤ
+    // =====================================================
+
+    for (
+        let i = 0;
+        i < listThoPhu.length;
+        i++
+    ) {
+
+        sheet.getRange(
+            dongTongLuong,
+            listThoPhu[i].index,
+            2,
+            1
+        )
+            .merge()
+            .setValue(
+                listThoPhu[i].tongLuong
+            )
+            .setFontSize(14)
+            .setFontWeight("bold")
+            .setBackground(
+                listThoPhu[i].color
+            )
+            .setNumberFormat("#,##0")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle");
+    }
+
+    // =====================================================
+    // CỘT NGÀY SỬA CỦA HÀNG TỔNG
+    // =====================================================
+
+    var cotNgaySua =
+        startColTho +
+        listThoChinh.length +
+        listThoPhu.length;
+
+    sheet.getRange(
+        dongTongLuong,
+        cotNgaySua,
+        2,
+        1
+    )
+        .merge()
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+    // =====================================================
+    // 15. MERGE NGÀY + TỔNG BILL NGÀY
+    // Chi tiết bắt đầu từ dòng 7
+    // =====================================================
+
+    var dataNgay =
+        sheet.getRange(
+            dongBatDauLuong,
+            15, // O
+            soDongChiTiet,
+            1
+        )
+        .getValues();
+
+    var groupStart = 0;
+
+    var currentColor = 1;
+
+    while (
+        groupStart <
+        dataNgay.length
+    ) {
+
+        var currentDateValue =
+            dataNgay[groupStart][0];
+
+        // Nếu dòng trống
+        if (
+            !currentDateValue
+        ) {
+
+            groupStart++;
+            continue;
+        }
+
+        var currentDateString =
+            Utilities.formatDate(
+                currentDateValue,
+                Session.getScriptTimeZone(),
+                "dd/MM/yyyy"
+            );
+
+        var groupEnd =
+            groupStart;
+
+        // Tìm hết các dòng cùng ngày liên tiếp
+        while (
+            groupEnd + 1 <
+                dataNgay.length &&
+            dataNgay[groupEnd + 1][0]
+        ) {
+
+            var nextDateString =
+                Utilities.formatDate(
+                    dataNgay[
+                        groupEnd + 1
+                    ][0],
+                    Session.getScriptTimeZone(),
+                    "dd/MM/yyyy"
+                );
+
+            if (
+                nextDateString !==
+                currentDateString
+            ) {
+                break;
+            }
+
+            groupEnd++;
+        }
+
+        var groupLength =
+            groupEnd -
+            groupStart +
+            1;
+
+        var sheetStartRow =
+            dongBatDauLuong +
+            groupStart;
+
+        // -----------------------------
+        // Merge cột ngày O
+        // -----------------------------
+
+        var dateRange =
+            sheet.getRange(
+                sheetStartRow,
+                15,
+                groupLength,
+                1
+            );
+
+        if (groupLength > 1) {
+
+            var dateValue =
+                dateRange
+                    .getCell(1, 1)
+                    .getValue();
+
+            dateRange
+                .clearContent()
+                .merge()
+                .setValue(dateValue);
+        }
+
+        dateRange
+            .setFontWeight("bold")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle");
+
+        // -----------------------------
+        // Tính tổng bill ngày
+        // -----------------------------
+
+        var billsInDay =
+            sheet.getRange(
+                sheetStartRow,
+                17, // Q
+                groupLength,
+                1
+            )
+            .getValues();
+
+        var totalDay = 0;
+
+        for (
+            var b = 0;
+            b < billsInDay.length;
+            b++
+        ) {
+
+            totalDay +=
+                Number(
+                    billsInDay[b][0]
+                ) || 0;
+        }
+
+        // Cột R
+        var totalDayRange =
+            sheet.getRange(
+                sheetStartRow,
+                18,
+                groupLength,
+                1
+            );
+
+        if (groupLength > 1) {
+
+            totalDayRange
+                .clearContent()
+                .merge()
+                .setValue(totalDay);
+
+        } else {
+
+            totalDayRange
+                .setValue(totalDay);
+        }
+
+        totalDayRange
+            .setNumberFormat("#,##0")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle");
+
+        // -----------------------------
+        // Màu xen kẽ theo ngày
+        // Chỉ O:R
+        // -----------------------------
+
+        var hangColor;
+
+        if (currentColor === 1) {
+
+            hangColor =
+                "#d9d2e9";
+
+            currentColor = 2;
+
+        } else {
+
+            hangColor =
+                "#ffffff";
+
+            currentColor = 1;
+        }
+
+        sheet.getRange(
+            sheetStartRow,
+            15,
+            groupLength,
+            4
+        )
+            .setBackground(
+                hangColor
+            );
+
+        // Sang nhóm ngày tiếp theo
+        groupStart =
+            groupEnd + 1;
+    }
+
+    // =====================================================
+    // 16. BORDER TOÀN BỘ BẢNG
+    // Dòng 5 -> hết chi tiết
+    // =====================================================
+
+    var soCotBangLuong =
+        5 +
+        listThoChinh.length +
+        listThoPhu.length;
+
+    var soDongBangLuong =
+        dongCuoiChiTiet -
+        dongTongLuong +
+        1;
+
+    sheet.getRange(
+        dongTongLuong,
+        cotBatDauLuong,
+        soDongBangLuong,
+        soCotBangLuong
+    )
+        .setBorder(
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+        )
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle");
+
+    // =====================================================
+    // 17. XUẤT KPI TẠI J13:M
+    // =====================================================
+
+    xuatThongKeNhanVien(
+        sheet,
+        13,
+        listThoChinh,
+        listThoPhu
+    );
 }
 
 function exportSheetToPdfAndEmail() {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet(); // Chọn sheet hiện tại
-    var sheetId = sheet.getSheetId(); // Lấy ID của sheet
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheetId = sheet.getSheetId();
 
-    // Lấy ID của file Google Sheets
     var spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
 
-    // Thiết lập các tham số cho PDF
     var url = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/export?' +
-        'format=pdf&' + // Định dạng PDF
-        'size=A4&' + // Kích thước giấy
-        'portrait=true&' + // In dọc
-        'fitw=true&' + // Phù hợp với chiều rộng
-        'sheetnames=false&' + // Không hiển thị tên sheet
-        'printtitle=false&' + // Không hiển thị tiêu đề
-        'pagenumbers=true&' + // Hiển thị số trang
-        'gridlines=false&' + // Ẩn đường lưới
-        'fzr=false&' + // Không đông cột
-        'gid=' + sheetId; // ID của sheet
+        'format=pdf&' +
+        'size=A4&' +
+        'portrait=true&' +
+        'fitw=true&' +
+        'sheetnames=false&' +
+        'printtitle=false&' +
+        'pagenumbers=true&' +
+        'gridlines=false&' +
+        'fzr=false&' +
+        'gid=' + sheetId;
 
-    // Tạo request cho file PDF
     var token = ScriptApp.getOAuthToken();
     var response = UrlFetchApp.fetch(url, {
         headers: {
@@ -473,13 +1939,12 @@ function exportSheetToPdfAndEmail() {
         }
     });
 
-    // Tạo tệp PDF từ dữ liệu trả về
     var pdfBlob = response.getBlob().setName(sheet.getName() + ".pdf");
 
-    // Gửi email với file PDF đính kèm
-    var email = "mrthanh260801@gmail.com"; // Thay bằng email người nhận
+    var email = "mrthanh260801@gmail.com";
     var subject = "Báo cáo PDF từ Google Sheets";
     var body = "Đây là báo cáo của bạn dưới dạng file PDF.";
+
     MailApp.sendEmail(email, subject, body, {
         attachments: [pdfBlob]
     });
@@ -500,38 +1965,38 @@ function onOpen() {
 
 function filterMultipleColumns() {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    sheet.getFilter().remove(); // Xóa bộ lọc nếu có  
-    var range = sheet.getRange("U4:S"); // Lấy toàn bộ dữ liệu
-    var filter = range.createFilter(); // Tạo bộ lọc
+    sheet.getFilter().remove();
 
-    // Lọc cột B: chỉ hiển thị các số từ 100 đến 500
-    filter.setColumnFilterCriteria(21, SpreadsheetApp.newFilterCriteria()
-        .whenNumberBetween(0, 500000000000000000)
-        .build());
+    var range = sheet.getRange("U4:S");
+    var filter = range.createFilter();
+
+    filter.setColumnFilterCriteria(
+        21,
+        SpreadsheetApp.newFilterCriteria()
+            .whenNumberBetween(0, 500000000000000000)
+            .build()
+    );
 }
 
 // Hàm tạo file PDF từ vùng chọn
 function createPDF() {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet(); // Chọn sheet hiện tại
-    var sheetId = sheet.getSheetId(); // Lấy ID của sheet
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheetId = sheet.getSheetId();
 
-    // Lấy ID của file Google Sheets
     var spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
 
-    // Thiết lập các tham số cho PDF
     var url = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/export?' +
-        'format=pdf&' + // Định dạng PDF
-        'size=A4&' + // Kích thước giấy
-        'portrait=true&' + // In dọc
-        'fitw=true&' + // Phù hợp với chiều rộng
-        'sheetnames=false&' + // Không hiển thị tên sheet
-        'printtitle=false&' + // Không hiển thị tiêu đề
-        'pagenumbers=true&' + // Hiển thị số trang
-        'gridlines=false&' + // Ẩn đường lưới
-        'fzr=false&' + // Không đông cột
-        'gid=' + sheetId; // ID của sheet
+        'format=pdf&' +
+        'size=A4&' +
+        'portrait=true&' +
+        'fitw=true&' +
+        'sheetnames=false&' +
+        'printtitle=false&' +
+        'pagenumbers=true&' +
+        'gridlines=false&' +
+        'fzr=false&' +
+        'gid=' + sheetId;
 
-    // Tạo request cho file PDF
     var token = ScriptApp.getOAuthToken();
     var response = UrlFetchApp.fetch(url, {
         headers: {
@@ -539,28 +2004,26 @@ function createPDF() {
         }
     });
 
-    // Tạo tệp PDF từ dữ liệu trả về
     var blob = response.getBlob().setName(sheet.getName() + ".pdf");
-    // var blob = sheetToPDF(sheet, range);
-    var folder = DriveApp.getFolderById("1-28iaodg7mLLo0GgkOe4teSUEG-HmP5m"); // ID thư mục Drive để lưu
+    var folder = DriveApp.getFolderById("1-28iaodg7mLLo0GgkOe4teSUEG-HmP5m");
     var file = folder.createFile(blob).setName("Exported_PDF.pdf");
 
-    return file.getUrl(); // Trả về URL của file PDF
+    return file.getUrl();
 }
 
-// Hàm tạo file PDF từ vùng chọn
+// Giữ nguyên function createPDF thứ hai như source gốc.
+// Lưu ý: trong JavaScript, function cùng tên phía dưới sẽ override function phía trên.
 function createPDF() {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    var range = sheet.getRange("A1:E10"); // Chọn vùng cần xuất PDF (có thể đổi)
+    var range = sheet.getRange("A1:E10");
 
-    var folder = DriveApp.getFolderById("1-28iaodg7mLLo0GgkOe4teSUEG-HmP5m"); // ID thư mục Drive để lưu file
+    var folder = DriveApp.getFolderById("1-28iaodg7mLLo0GgkOe4teSUEG-HmP5m");
     var blob = sheetToPDF(sheet, range);
     var file = folder.createFile(blob).setName("Exported_PDF.pdf");
 
-    return file.getUrl(); // Trả về URL của file PDF
+    return file.getUrl();
 }
 
-// Chuyển Sheet thành PDF Blob
 function sheetToPDF(sheet, range) {
     var spreadsheet = sheet.getParent();
     var sheetId = sheet.getSheetId();
@@ -572,8 +2035,11 @@ function sheetToPDF(sheet, range) {
 
     var params = {
         muteHttpExceptions: true,
-        headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() }
+        headers: {
+            "Authorization": "Bearer " + ScriptApp.getOAuthToken()
+        }
     };
+
     var response = UrlFetchApp.fetch(url, params);
 
     return response.getBlob().setName("Exported_PDF.pdf");
@@ -589,160 +2055,229 @@ function setThangDefault() {
 function doGet(e) {
     var scriptProperties = PropertiesService.getScriptProperties();
     var value = scriptProperties.getProperty("sheetActive");
+
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(value);
+
     let dongBatDau = 3;
     let cotBatDau = 15;
     let cotCuoiCung = sheet.getLastColumn() - cotBatDau;
     let dongCuoiCung = sheet.getLastRow() - 2;
 
-    Logger.log(cotCuoiCung)
-    Logger.log(dongCuoiCung)
+    Logger.log(cotCuoiCung);
+    Logger.log(dongCuoiCung);
 
-    var data = sheet.getRange(dongBatDau, cotBatDau, dongCuoiCung, cotCuoiCung).getValues();
-    Logger.log(value)
-    Logger.log(JSON.stringify(data))
+    var data = sheet.getRange(
+        dongBatDau,
+        cotBatDau,
+        dongCuoiCung,
+        cotCuoiCung
+    ).getValues();
 
-    var jsonOutput = ContentService.createTextOutput(JSON.stringify(data));
+    Logger.log(value);
+    Logger.log(JSON.stringify(data));
+
+    var jsonOutput = ContentService.createTextOutput(
+        JSON.stringify(data)
+    );
+
     jsonOutput.setMimeType(ContentService.MimeType.JSON);
 
-    Logger.log(jsonOutput)
-    return jsonOutput;
+    Logger.log(jsonOutput);
 
+    return jsonOutput;
 }
 
 function createTables() {
-    var ui = SpreadsheetApp.getUi(); // Lấy đối tượng UI
-    // Hiển thị hộp thoại xác nhận
-    var response = ui.alert("Xác nhận", "Có luốn tạo bảng mẫu?, lưu ý tạo sheet mới trước!", ui.ButtonSet.YES_NO);
+    var ui = SpreadsheetApp.getUi();
+
+    var response = ui.alert(
+        "Xác nhận",
+        "Có luốn tạo bảng mẫu?, lưu ý tạo sheet mới trước!",
+        ui.ButtonSet.YES_NO
+    );
 
     if (response == ui.Button.YES) {
         var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
-        // Xóa nội dung cũ (nếu có)
         sheet.clear();
 
-        // Tạo tiêu đề chính "Tháng 2/2025"
-        sheet.getRange("A1").setValue("Tháng 2/2025").setFontWeight("bold").setFontSize(14);
+        sheet.getRange("A1")
+            .setValue("Tháng 2/2025")
+            .setFontWeight("bold")
+            .setFontSize(14);
 
-        // Tiêu đề bảng chính
-        var headers = ["Ngày", "Tên khách", "Tiền bill", "Phương thức", "Thợ chính", "Thợ phụ", "Ghi chú", "Tính lương"];
-        sheet.getRange("A4:H4").setValues([headers]).setFontWeight("bold").setHorizontalAlignment("center").setBackground("#DDDDDD");
+        var headers = [
+            "Ngày",
+            "Tên khách",
+            "Tiền bill",
+            "Phương thức",
+            "Thợ chính",
+            "Thợ phụ",
+            "Ghi chú",
+            "Tính lương"
+        ];
 
-        // Định dạng dropdown cho "Phương thức", "Thợ chính", "Thợ phụ"
-        var validation = SpreadsheetApp.newDataValidation().requireValueInList(["Tiền mặt", "Chuyển khoản"]).build();
+        sheet.getRange("A4:H4")
+            .setValues([headers])
+            .setFontWeight("bold")
+            .setHorizontalAlignment("center")
+            .setBackground("#DDDDDD");
+
+        var validation = SpreadsheetApp.newDataValidation()
+            .requireValueInList(["Tiền mặt", "Chuyển khoản"])
+            .build();
+
         sheet.getRange("D5:D20").setDataValidation(validation);
 
         var rangeListThoChinh = sheet.getRange("J4:J20");
-        var validationThoChinh = SpreadsheetApp.newDataValidation().requireValueInRange(rangeListThoChinh).build();
+        var validationThoChinh = SpreadsheetApp.newDataValidation()
+            .requireValueInRange(rangeListThoChinh)
+            .build();
 
         var rangeListThoPhu = sheet.getRange("L4:L20");
-        var validationThoPhu = SpreadsheetApp.newDataValidation().requireValueInRange(rangeListThoPhu).build();
+        var validationThoPhu = SpreadsheetApp.newDataValidation()
+            .requireValueInRange(rangeListThoPhu)
+            .build();
 
         sheet.getRange("E5:E20").setDataValidation(validationThoChinh);
         sheet.getRange("F5:F20").setDataValidation(validationThoPhu);
 
-        // Tạo bảng Nhân viên tháng 11
-        sheet.getRange("J1").setValue("Nhân viên tháng 11").setFontWeight("bold").setFontSize(12);
-        sheet.getRange("J3:K3").setValues([["Thợ chính", "Lương (%)"]]).setFontWeight("bold").setBackground("#DDDDDD");
-        sheet.getRange("L3:M3").setValues([["Thợ phụ", "Lương (%)"]]).setFontWeight("bold").setBackground("#DDDDDD");
+        sheet.getRange("J1")
+            .setValue("Nhân viên tháng 11")
+            .setFontWeight("bold")
+            .setFontSize(12);
 
-        // Tô màu các ô ví dụ
-        sheet.getRange("J4").setBackground("#FFD700"); // Vàng
-        sheet.getRange("J6").setBackground("#00FF00"); // Xanh lá
-        sheet.getRange("J7").setBackground("#FFFF00"); // Vàng nhạt
-        sheet.getRange("L5").setBackground("#D3A4C2"); // Hồng nhạt
+        sheet.getRange("J3:K3")
+            .setValues([["Thợ chính", "Lương (%)"]])
+            .setFontWeight("bold")
+            .setBackground("#DDDDDD");
 
-        // Căn giữa tiêu đề
+        sheet.getRange("L3:M3")
+            .setValues([["Thợ phụ", "Lương (%)"]])
+            .setFontWeight("bold")
+            .setBackground("#DDDDDD");
+
+        sheet.getRange("J4").setBackground("#FFD700");
+        sheet.getRange("J6").setBackground("#00FF00");
+        sheet.getRange("J7").setBackground("#FFFF00");
+        sheet.getRange("L5").setBackground("#D3A4C2");
+
         sheet.getRange("J4:M4").setHorizontalAlignment("center");
 
-        sheet.getRange("A4:H20").setBorder(true, true, true, true, true, true).setHorizontalAlignment("center").setVerticalAlignment("middle");
-        sheet.getRange("J3:M20").setBorder(true, true, true, true, true, true).setHorizontalAlignment("center").setVerticalAlignment("middle");
-        sheet.getRange("A1:b1").merge().setHorizontalAlignment("left");
+        sheet.getRange("A4:H20")
+            .setBorder(true, true, true, true, true, true)
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle");
 
-        sheet.getRange("A3:a4").merge();
-        sheet.getRange("b3:b4").merge();
-        sheet.getRange("c3:c4").merge();
-        sheet.getRange("d3:d4").merge();
-        sheet.getRange("e3:e4").merge();
-        sheet.getRange("f3:f4").merge()
-        sheet.getRange("g3:g4").merge()
-        sheet.getRange("h3:h4").merge()
+        sheet.getRange("J3:M20")
+            .setBorder(true, true, true, true, true, true)
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle");
 
+        sheet.getRange("A1:B1")
+            .merge()
+            .setHorizontalAlignment("left");
 
+        sheet.getRange("A3:A4").merge();
+        sheet.getRange("B3:B4").merge();
+        sheet.getRange("C3:C4").merge();
+        sheet.getRange("D3:D4").merge();
+        sheet.getRange("E3:E4").merge();
+        sheet.getRange("F3:F4").merge();
+        sheet.getRange("G3:G4").merge();
+        sheet.getRange("H3:H4").merge();
     }
 }
 
 function runWithProgress() {
-  var html = HtmlService.createHtmlOutputFromFile('progress')
-      .setWidth(400)
-      .setHeight(150);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Đang xử lý...');
+    var html = HtmlService.createHtmlOutputFromFile("progress")
+        .setWidth(400)
+        .setHeight(150);
 
-  for (var i = 0; i <= 100; i += 10) { // Giả lập tiến trình
-    updateProgressInHtml(i);
-    Utilities.sleep(300); // Chờ 300ms để thấy hiệu ứng
-  }
+    SpreadsheetApp.getUi().showModalDialog(
+        html,
+        "Đang xử lý..."
+    );
 
-  setThangDefault(); // Gọi function chính
-  updateProgressInHtml(100); // Đảm bảo tiến trình đạt 100%
+    for (var i = 0; i <= 100; i += 10) {
+        updateProgressInHtml(i);
+        Utilities.sleep(300);
+    }
+
+    setThangDefault();
+    updateProgressInHtml(100);
 }
 
-
 function updateProgressInHtml(value) {
-  var template = HtmlService.createHtmlOutput("<script>window.parent.updateProgress(" + value + ");</script>");
-  SpreadsheetApp.getUi().showModalDialog(template, "Cập nhật tiến trình...");
+    var template = HtmlService.createHtmlOutput(
+        "<script>window.parent.updateProgress(" +
+        value +
+        ");</script>"
+    );
+
+    SpreadsheetApp.getUi().showModalDialog(
+        template,
+        "Cập nhật tiến trình..."
+    );
 }
 
 function exportRangeToPDF() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
-  var sheetId = sheet.getSheetId();
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+    var sheetId = sheet.getSheetId();
 
-  var startRow = 3;
-  var startCol = 15; // Cột O = 15
-  
-  var lastRow = sheet.getLastRow() + 1;
-  var lastCol = sheet.getLastColumn();
-  
-  var numRows = lastRow - startRow + 1;
-  var numCols = lastCol - startCol + 1;
-  
-  var rangeA1 = sheet.getRange(startRow, startCol, numRows, numCols).getA1Notation();
-  
-  var url = "https://docs.google.com/spreadsheets/d/" + spreadsheetId + "/export?format=pdf" +
-      "&portrait=true" +   // Xuất PDF nằm ngang
-      "&size=A4" +          // Chọn khổ giấy A4
-      "&gid=" + sheetId +   // Chỉ xuất sheet hiện tại
-      "&range=" + rangeA1 +
-      "&gridlines=false" +  // Ẩn dòng kẻ
-      "&fitw=true";         // Căn chỉnh vừa trang
+    var startRow = 3;
+    var startCol = 15; // O
 
-  var token = ScriptApp.getOAuthToken();
-  var response = UrlFetchApp.fetch(url, {
-    headers: {
-      'Authorization': 'Bearer ' + token
-    }
-  });
+    var lastRow = sheet.getLastRow() + 1;
+    var lastCol = sheet.getLastColumn();
 
-  var pdfBlob = response.getBlob().setName("Bảng lương Thái Bình.pdf");
+    var numRows = lastRow - startRow + 1;
+    var numCols = lastCol - startCol + 1;
 
-  // Lưu PDF vào Google Drive
-  var file = DriveApp.createFile(pdfBlob);
-  var downloadUrl = file.getDownloadUrl(); // Lấy link tải xuống
+    var rangeA1 = sheet.getRange(
+        startRow,
+        startCol,
+        numRows,
+        numCols
+    ).getA1Notation();
 
-  // Hiển thị HTML để tự động mở tab mới
-  var html = '<script>window.open("' + downloadUrl + '", "_blank"); google.script.host.close();</script>';
-  var ui = HtmlService.createHtmlOutput(html);
-  SpreadsheetApp.getUi().showModalDialog(ui, "Đang tải xuống...");
-  
+    var url =
+        "https://docs.google.com/spreadsheets/d/" +
+        spreadsheetId +
+        "/export?format=pdf" +
+        "&portrait=true" +
+        "&size=A4" +
+        "&gid=" +
+        sheetId +
+        "&range=" +
+        rangeA1 +
+        "&gridlines=false" +
+        "&fitw=true";
+
+    var token = ScriptApp.getOAuthToken();
+
+    var response = UrlFetchApp.fetch(url, {
+        headers: {
+            "Authorization": "Bearer " + token
+        }
+    });
+
+    var pdfBlob = response.getBlob()
+        .setName("Bảng lương Thái Bình.pdf");
+
+    var file = DriveApp.createFile(pdfBlob);
+    var downloadUrl = file.getDownloadUrl();
+
+    var html =
+        '<script>window.open("' +
+        downloadUrl +
+        '", "_blank"); google.script.host.close();</script>';
+
+    var ui = HtmlService.createHtmlOutput(html);
+
+    SpreadsheetApp.getUi().showModalDialog(
+        ui,
+        "Đang tải xuống..."
+    );
 }
-
-
-
-
-
-
-
-
-
-
