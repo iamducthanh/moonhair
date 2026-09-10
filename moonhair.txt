@@ -32,9 +32,20 @@ const COL = {
 
     KPI: {
         START_ROW: 13,
-        START_COL: 9,       // J
-        NUM_COLS: 4          // J:M
+        START_COL: 9,        // I
+        NUM_COLS: 4          // I:L
     }
+};
+
+// =====================================================
+// CẤU HÌNH CẢNH BÁO QUẢN TRỊ
+// Có thể điều chỉnh các ngưỡng này sau này nếu cần.
+// =====================================================
+const KPI_WARNING = {
+    TOP_REVENUE_COUNT: 2,          // Chỉ xét Top 2 doanh thu
+    BILL_AVG_DROP_THRESHOLD: 0.10, // Bill TB thấp >= 10% so với TB salon
+    HC_AVG_DROP_THRESHOLD: 0.10,   // Bill HC TB thấp >= 10% so với TB salon
+    SEVERE_DROP_THRESHOLD: 0.20    // Thấp >= 20% -> Cần chú ý
 };
 
 function getLastNonEmptyRowInRange(sheet, col, startRow, endRow) {
@@ -161,15 +172,192 @@ function highlightSpecialBills(
     }
 }
 
+
+// =====================================================
+// ĐÁNH GIÁ CẢNH BÁO QUẢN TRỊ CHO THỢ CHÍNH
+//
+// Rule hiện tại:
+// - Chỉ xét Top 2 doanh thu.
+// - Bill TB thấp >= 10% so với Bill TB salon => cảnh báo.
+// - Nếu Bill HC TB cũng thấp >= 10% => nâng mức chú ý.
+// - Nếu Bill TB thấp >= 20% => mức "Cần chú ý".
+//
+// Hàm trả về:
+// - billTrungBinhSalon
+// - billHoaChatTrungBinhSalon
+// - warnings: danh sách cảnh báo để hiển thị tại I:L
+// - statusByName: trạng thái để hiển thị ở bảng tổng quát N:AC
+// =====================================================
+function taoDanhGiaQuanTri(listThoChinh) {
+    var tongDoanhThuThoChinh = 0;
+    var tongBillThoChinh = 0;
+    var tongDoanhThuHoaChat = 0;
+    var tongBillHoaChat = 0;
+
+    listThoChinh.forEach(function (tho) {
+        tongDoanhThuThoChinh += Number(tho.tongDoanhThuCaNhan) || 0;
+        tongBillThoChinh += Number(tho.tongBill) || 0;
+        tongDoanhThuHoaChat += Number(tho.tongDoanhThuHoaChat) || 0;
+        tongBillHoaChat += Number(tho.soBillHoaChat) || 0;
+    });
+
+    var billTrungBinhSalon = tongBillThoChinh > 0
+        ? tongDoanhThuThoChinh / tongBillThoChinh
+        : 0;
+
+    var billHoaChatTrungBinhSalon = tongBillHoaChat > 0
+        ? tongDoanhThuHoaChat / tongBillHoaChat
+        : 0;
+
+    // Mặc định tất cả nhân viên là bình thường
+    var statusByName = {};
+
+    listThoChinh.forEach(function (tho) {
+        statusByName[tho.name] = {
+            text: "✓ Bình thường",
+            level: "NORMAL",
+            background: "#d9ead3",
+            chenhLech: 0,
+            rankDoanhThu: 0
+        };
+    });
+
+    // Chỉ đưa những người thực sự có bill vào bảng xếp hạng doanh thu
+    var xepHangDoanhThu = listThoChinh
+        .map(function (tho, index) {
+            return {
+                tho: tho,
+                originalIndex: index
+            };
+        })
+        .filter(function (item) {
+            return (Number(item.tho.tongDoanhThuCaNhan) || 0) > 0 &&
+                (Number(item.tho.tongBill) || 0) > 0;
+        })
+        .sort(function (a, b) {
+            var diff =
+                (Number(b.tho.tongDoanhThuCaNhan) || 0) -
+                (Number(a.tho.tongDoanhThuCaNhan) || 0);
+
+            // Nếu doanh thu bằng nhau thì giữ thứ tự cấu hình
+            return diff !== 0 ? diff : a.originalIndex - b.originalIndex;
+        });
+
+    var warnings = [];
+    var soNguoiCanXet = Math.min(
+        KPI_WARNING.TOP_REVENUE_COUNT,
+        xepHangDoanhThu.length
+    );
+
+    for (var i = 0; i < soNguoiCanXet; i++) {
+        var tho = xepHangDoanhThu[i].tho;
+        var doanhThu = Number(tho.tongDoanhThuCaNhan) || 0;
+        var tongBill = Number(tho.tongBill) || 0;
+
+        var billTrungBinh = tongBill > 0
+            ? doanhThu / tongBill
+            : 0;
+
+        if (billTrungBinhSalon <= 0 || billTrungBinh <= 0) {
+            continue;
+        }
+
+        // Ví dụ thấp hơn salon 18.5% => 0.185
+        var tyLeThapHon =
+            (billTrungBinhSalon - billTrungBinh) /
+            billTrungBinhSalon;
+
+        if (tyLeThapHon < KPI_WARNING.BILL_AVG_DROP_THRESHOLD) {
+            continue;
+        }
+
+        var billHoaChatTrungBinh = 0;
+
+        if ((Number(tho.soBillHoaChat) || 0) > 0) {
+            billHoaChatTrungBinh =
+                (Number(tho.tongDoanhThuHoaChat) || 0) /
+                (Number(tho.soBillHoaChat) || 0);
+        }
+
+        var tyLeHoaChatThapHon = 0;
+
+        if (
+            billHoaChatTrungBinhSalon > 0 &&
+            billHoaChatTrungBinh > 0 &&
+            billHoaChatTrungBinh < billHoaChatTrungBinhSalon
+        ) {
+            tyLeHoaChatThapHon =
+                (billHoaChatTrungBinhSalon - billHoaChatTrungBinh) /
+                billHoaChatTrungBinhSalon;
+        }
+
+        var hoaChatCungThap =
+            tyLeHoaChatThapHon >= KPI_WARNING.HC_AVG_DROP_THRESHOLD;
+
+        var canChuY =
+            tyLeThapHon >= KPI_WARNING.SEVERE_DROP_THRESHOLD ||
+            hoaChatCungThap;
+
+        var canhBaoText = hoaChatCungThap
+            ? "DT Top #" + (i + 1) + " - Bill TB & HC TB thấp"
+            : "DT Top #" + (i + 1) + " - Bill TB thấp";
+
+        var mucText = canChuY
+            ? "🔴 Cần chú ý"
+            : "⚠ Cảnh báo";
+
+        var statusText = hoaChatCungThap
+            ? (canChuY ? "🔴 Bill TB & HC TB thấp" : "⚠ Bill TB & HC TB thấp")
+            : (canChuY ? "🔴 Bill TB thấp" : "⚠ Bill TB thấp");
+
+        var background = canChuY
+            ? "#f4cccc"
+            : "#fce5cd";
+
+        var warning = {
+            name: tho.name,
+            color: tho.color,
+            canhBao: canhBaoText,
+            // Giá trị âm để trên sheet hiển thị -18.5%
+            chenhLech: -tyLeThapHon,
+            muc: mucText,
+            level: canChuY ? "DANGER" : "WARNING",
+            background: background,
+            rankDoanhThu: i + 1,
+            billTrungBinh: billTrungBinh,
+            billTrungBinhSalon: billTrungBinhSalon,
+            billHoaChatTrungBinh: billHoaChatTrungBinh,
+            billHoaChatTrungBinhSalon: billHoaChatTrungBinhSalon
+        };
+
+        warnings.push(warning);
+
+        statusByName[tho.name] = {
+            text: statusText,
+            level: warning.level,
+            background: background,
+            chenhLech: warning.chenhLech,
+            rankDoanhThu: warning.rankDoanhThu
+        };
+    }
+
+    return {
+        billTrungBinhSalon: billTrungBinhSalon,
+        billHoaChatTrungBinhSalon: billHoaChatTrungBinhSalon,
+        warnings: warnings,
+        statusByName: statusByName
+    };
+}
+
 function xuatThongKeNhanVien(sheet, startRow, listThoChinh, listThoPhu) {
-    var startCol = COL.KPI.START_COL; // J
-    var totalCols = COL.KPI.NUM_COLS; // J:M
+    var startCol = COL.KPI.START_COL; // I
+    var totalCols = COL.KPI.NUM_COLS; // I:L
     var fontSize = 13;
 
-    sheet.setColumnWidth(9, 115); // J
-    sheet.setColumnWidth(10, 125); // K
-    sheet.setColumnWidth(11, 135); // L
-    sheet.setColumnWidth(12, 120); // M
+    sheet.setColumnWidth(9, 115); // I
+    sheet.setColumnWidth(10, 125); // J
+    sheet.setColumnWidth(11, 135); // K
+    sheet.setColumnWidth(12, 120); // L
 
     // =====================================================
     // TITLE
@@ -425,6 +613,366 @@ function xuatThongKeNhanVien(sheet, startRow, listThoChinh, listThoPhu) {
             .setFontSize(fontSize)
             .setHorizontalAlignment("left");
     }
+
+
+    // =====================================================
+    // 4. CẢNH BÁO QUẢN TRỊ
+    // Hiển thị sau bảng HÓA CHẤT - THỢ CHÍNH, cách 1 dòng.
+    // =====================================================
+    var danhGiaQuanTri = taoDanhGiaQuanTri(listThoChinh);
+    var canhBaoRows = danhGiaQuanTri.warnings;
+
+    var rowCanhBaoTitle =
+        rowHoaChatData +
+        hoaChatRows.length +
+        2; // chừa 1 dòng trống
+
+    sheet.getRange(rowCanhBaoTitle, startCol, 1, totalCols)
+        .merge()
+        .setValue("⚠ CẢNH BÁO QUẢN TRỊ")
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("left")
+        .setVerticalAlignment("middle")
+        .setBackground("#f6b26b")
+        .setBorder(true, true, true, true, true, true);
+
+    if (canhBaoRows.length === 0) {
+        // Không có cảnh báo: chỉ hiển thị 1 dòng trạng thái
+        sheet.getRange(rowCanhBaoTitle + 1, startCol, 1, totalCols)
+            .merge()
+            .setValue("✓ Không có cảnh báo quản trị đáng chú ý")
+            .setFontSize(fontSize)
+            .setFontWeight("bold")
+            .setFontColor("#274e13")
+            .setBackground("#d9ead3")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle")
+            .setBorder(true, true, true, true, true, true);
+    } else {
+        var rowCanhBaoHeader = rowCanhBaoTitle + 1;
+        var rowCanhBaoData = rowCanhBaoHeader + 1;
+
+        sheet.getRange(rowCanhBaoHeader, startCol, 1, totalCols)
+            .setValues([[
+                "Nhân viên",
+                "Cảnh báo",
+                "So với salon",
+                "Mức"
+            ]])
+            .setFontSize(fontSize)
+            .setFontWeight("bold")
+            .setBackground("#d3d3d3")
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle")
+            .setWrap(true)
+            .setBorder(true, true, true, true, true, true);
+
+        var warningValues = canhBaoRows.map(function (item) {
+            return [
+                item.name,
+                item.canhBao,
+                item.chenhLech,
+                item.muc
+            ];
+        });
+
+        sheet.getRange(
+            rowCanhBaoData,
+            startCol,
+            warningValues.length,
+            totalCols
+        )
+            .setValues(warningValues)
+            .setFontSize(fontSize)
+            .setHorizontalAlignment("center")
+            .setVerticalAlignment("middle")
+            .setWrap(true)
+            .setBorder(true, true, true, true, true, true);
+
+        // Chênh lệch so với Bill TB salon
+        sheet.getRange(
+            rowCanhBaoData,
+            startCol + 2,
+            warningValues.length,
+            1
+        )
+            .setNumberFormat("0.0%")
+            .setFontWeight("bold");
+
+        for (var cb = 0; cb < canhBaoRows.length; cb++) {
+            // Tên nhân viên: giữ màu nhân viên
+            sheet.getRange(rowCanhBaoData + cb, startCol)
+                .setBackground(canhBaoRows[cb].color)
+                .setFontColor("#000000")
+                .setFontWeight("bold")
+                .setHorizontalAlignment("left");
+
+            // Ô mức cảnh báo
+            sheet.getRange(rowCanhBaoData + cb, startCol + 3)
+                .setBackground(canhBaoRows[cb].background)
+                .setFontWeight("bold");
+
+            // Ô chênh lệch
+            sheet.getRange(rowCanhBaoData + cb, startCol + 2)
+                .setBackground(canhBaoRows[cb].background);
+        }
+    }
+
+}
+
+
+// =====================================================
+// BẢNG TỔNG QUÁT HIỆU SUẤT THỢ CHÍNH
+// Bắt đầu từ cột N và được đặt dưới bảng lương 1 hàng trống.
+// =====================================================
+function xuatBangTongQuatThoChinh(
+    sheet,
+    startRow,
+    listThoChinh,
+    tongDoanhThuSalon
+) {
+    var startCol = COL.SALARY.START; // N = 14
+    var fontSize = 13;
+
+    // Dùng cùng 1 rule với khối CẢNH BÁO QUẢN TRỊ ở I:L
+    var danhGiaQuanTri = taoDanhGiaQuanTri(listThoChinh);
+
+    var headers = [
+        "Thợ",
+        "Doanh thu",
+        "% DT salon",
+        "Tổng bill",
+        "Bill TB",
+        "SL bill HC",
+        "DT hóa chất",
+        "Bill HC TB",
+        "SL KYC",
+        "DT KYC",
+        "Ngày làm",
+        "DT / ngày",
+        "Bill / ngày",
+        "Tổng lương",
+        "Lương / DT",
+        "Trạng thái"
+    ];
+
+    var totalCols = headers.length;
+
+    // =================================================
+    // TITLE
+    // =================================================
+    sheet.getRange(startRow, startCol, 1, totalCols)
+        .merge()
+        .setValue("TỔNG QUÁT HIỆU SUẤT THỢ CHÍNH")
+        .setFontFamily("Arial")
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setBackground("#d9ead3")
+        .setBorder(true, true, true, true, true, true);
+
+    // =================================================
+    // HEADER
+    // =================================================
+    sheet.getRange(startRow + 1, startCol, 1, totalCols)
+        .setValues([headers])
+        .setFontFamily("Arial")
+        .setFontSize(fontSize)
+        .setFontWeight("bold")
+        .setBackground("#d3d3d3")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setWrap(true)
+        .setBorder(true, true, true, true, true, true);
+
+    if (listThoChinh.length === 0) {
+        return;
+    }
+
+    // =================================================
+    // BUILD DATA
+    // =================================================
+    var rows = [];
+
+    listThoChinh.forEach(function (tho) {
+        var tongBill = Number(tho.tongBill) || 0;
+        var soBillHoaChat = Number(tho.soBillHoaChat) || 0;
+        var soBillKYC = Number(tho.soBillKYC) || 0;
+        var doanhThu = Number(tho.tongDoanhThuCaNhan) || 0;
+        var doanhThuHoaChat = Number(tho.tongDoanhThuHoaChat) || 0;
+        var doanhThuKYC = Number(tho.tongDoanhThuKYC) || 0;
+        var tongLuong = Number(tho.tongLuong) || 0;
+
+        var soNgayLam = Object.keys(tho.ngayLamMap || {}).length;
+
+        var tyTrongDoanhThu = tongDoanhThuSalon > 0
+            ? doanhThu / tongDoanhThuSalon
+            : 0;
+
+        var billTrungBinh = tongBill > 0
+            ? doanhThu / tongBill
+            : 0;
+
+        var billHoaChatTrungBinh = soBillHoaChat > 0
+            ? doanhThuHoaChat / soBillHoaChat
+            : 0;
+
+        var doanhThuNgay = soNgayLam > 0
+            ? doanhThu / soNgayLam
+            : 0;
+
+        var billNgay = soNgayLam > 0
+            ? tongBill / soNgayLam
+            : 0;
+
+        var tyLeLuong = doanhThu > 0
+            ? tongLuong / doanhThu
+            : 0;
+
+        var trangThai = danhGiaQuanTri.statusByName[tho.name]
+            ? danhGiaQuanTri.statusByName[tho.name].text
+            : "✓ Bình thường";
+
+        rows.push([
+            tho.name,
+            doanhThu,
+            tyTrongDoanhThu,
+            tongBill,
+            billTrungBinh,
+            soBillHoaChat,
+            doanhThuHoaChat,
+            billHoaChatTrungBinh,
+            soBillKYC,
+            doanhThuKYC,
+            soNgayLam,
+            doanhThuNgay,
+            billNgay,
+            tongLuong,
+            tyLeLuong,
+            trangThai
+        ]);
+    });
+
+    var dataStartRow = startRow + 2;
+
+    // =================================================
+    // WRITE DATA
+    // =================================================
+    sheet.getRange(
+        dataStartRow,
+        startCol,
+        rows.length,
+        totalCols
+    )
+        .setValues(rows)
+        .setFontFamily("Arial")
+        .setFontSize(fontSize)
+        .setFontWeight("normal")
+        .setHorizontalAlignment("center")
+        .setVerticalAlignment("middle")
+        .setBorder(true, true, true, true, true, true);
+
+    // Tên thợ: màu theo cấu hình
+    for (var i = 0; i < listThoChinh.length; i++) {
+        sheet.getRange(dataStartRow + i, startCol)
+            .setBackground(listThoChinh[i].color)
+            .setFontColor("#000000")
+            .setFontWeight("bold");
+
+        var statusInfo = danhGiaQuanTri.statusByName[listThoChinh[i].name] || {
+            background: "#d9ead3"
+        };
+
+        // Cột AC = Trạng thái
+        sheet.getRange(dataStartRow + i, startCol + 15)
+            .setBackground(statusInfo.background)
+            .setFontWeight("bold")
+            .setWrap(true);
+    }
+
+    // =================================================
+    // FORMAT
+    // =================================================
+
+    // Doanh thu
+    sheet.getRange(dataStartRow, startCol + 1, rows.length, 1)
+        .setNumberFormat("#,##0");
+
+    // % DT salon
+    sheet.getRange(dataStartRow, startCol + 2, rows.length, 1)
+        .setNumberFormat("0.00%");
+
+    // Tổng bill
+    sheet.getRange(dataStartRow, startCol + 3, rows.length, 1)
+        .setNumberFormat("0");
+
+    // Bill TB
+    sheet.getRange(dataStartRow, startCol + 4, rows.length, 1)
+        .setNumberFormat("#,##0");
+
+    // SL bill HC
+    sheet.getRange(dataStartRow, startCol + 5, rows.length, 1)
+        .setNumberFormat("0");
+
+    // DT hóa chất + Bill HC TB
+    sheet.getRange(dataStartRow, startCol + 6, rows.length, 2)
+        .setNumberFormat("#,##0");
+
+    // SL KYC
+    sheet.getRange(dataStartRow, startCol + 8, rows.length, 1)
+        .setNumberFormat("0");
+
+    // DT KYC
+    sheet.getRange(dataStartRow, startCol + 9, rows.length, 1)
+        .setNumberFormat("#,##0");
+
+    // Ngày làm
+    sheet.getRange(dataStartRow, startCol + 10, rows.length, 1)
+        .setNumberFormat("0");
+
+    // DT / ngày
+    sheet.getRange(dataStartRow, startCol + 11, rows.length, 1)
+        .setNumberFormat("#,##0");
+
+    // Bill / ngày
+    sheet.getRange(dataStartRow, startCol + 12, rows.length, 1)
+        .setNumberFormat("0.00");
+
+    // Tổng lương
+    sheet.getRange(dataStartRow, startCol + 13, rows.length, 1)
+        .setNumberFormat("#,##0");
+
+    // Lương / DT
+    sheet.getRange(dataStartRow, startCol + 14, rows.length, 1)
+        .setNumberFormat("0.00%");
+
+    // =================================================
+    // WIDTH
+    // =================================================
+    var widths = [
+        115, // Thợ
+        130, // Doanh thu
+        105, // % DT salon
+        95,  // Tổng bill
+        115, // Bill TB
+        100, // SL bill HC
+        130, // DT hóa chất
+        120, // Bill HC TB
+        90,  // SL KYC
+        115, // DT KYC
+        90,  // Ngày làm
+        120, // DT / ngày
+        100, // Bill / ngày
+        125, // Tổng lương
+        105, // Lương / DT
+        190  // Trạng thái
+    ];
+
+    for (var c = 0; c < widths.length; c++) {
+        sheet.setColumnWidth(startCol + c, widths[c]);
+    }
 }
 
 function createOrUpdateSheetLuong() {
@@ -645,7 +1193,7 @@ function tinhLuong() {
     }
 
     // =====================================================
-    // 1. CLEAR KPI CŨ J13:M
+    // 1. CLEAR KPI CŨ I13:L
     // =====================================================
     clearThongKeNhanVienCu(sheet);
 
@@ -837,8 +1385,19 @@ function tinhLuong() {
             color: mainConfig[c].color,
             tongLuong: 0,
             tongDoanhThuCaNhan: 0,
+
+            // KPI tổng quát
+            tongBill: 0,
+            ngayLamMap: {},
+
+            // KPI KYC
             tongDoanhThuKYC: 0,
+            soBillKYC: 0,
+
+            // KPI BSP
             tongDoanhThuBSP: 0,
+
+            // KPI hóa chất
             soBillHoaChat: 0,
             tongDoanhThuHoaChat: 0
         });
@@ -905,8 +1464,23 @@ function tinhLuong() {
         if (currentThoChinh) {
             currentThoChinh.tongDoanhThuCaNhan += tienBill;
 
+            // Tổng số bill của thợ chính
+            currentThoChinh.tongBill += 1;
+
+            // Ghi nhận ngày có phát sinh bill để tính số ngày làm
+            var ngayLamKey = ngay instanceof Date
+                ? Utilities.formatDate(
+                    ngay,
+                    Session.getScriptTimeZone(),
+                    "dd/MM/yyyy"
+                )
+                : String(ngay);
+
+            currentThoChinh.ngayLamMap[ngayLamKey] = true;
+
             if (isBillKYC(tenKhach)) {
                 currentThoChinh.tongDoanhThuKYC += tienBill;
+                currentThoChinh.soBillKYC += 1;
             }
 
             if (isBillBSP(tenKhach)) {
@@ -1247,13 +1821,26 @@ function tinhLuong() {
         .setVerticalAlignment("middle");
 
     // =====================================================
-    // 14. KPI CỐ ĐỊNH J13:M
+    // 14. KPI CỐ ĐỊNH I13:L + CẢNH BÁO QUẢN TRỊ
     // =====================================================
     xuatThongKeNhanVien(
         sheet,
         COL.KPI.START_ROW,
         listThoChinh,
         listThoPhu
+    );
+
+    // =====================================================
+    // 15. BẢNG TỔNG QUÁT THỢ CHÍNH
+    // Bắt đầu từ cột N, dưới bảng lương 1 hàng trống; có thêm cột Trạng thái
+    // =====================================================
+    var dongBatDauBangTongQuat = dongCuoiChiTiet + 2;
+
+    xuatBangTongQuatThoChinh(
+        sheet,
+        dongBatDauBangTongQuat,
+        listThoChinh,
+        tongDoanhThu
     );
 }
 
